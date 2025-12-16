@@ -7,8 +7,17 @@ using WorkflowEngine.Infrastructure.Security;
 using WorkflowEngine.Infrastructure.Services;
 using WorkflowEngine.Core.Interfaces;
 using WorkflowEngine.API.Middlewares;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// SERILOG CONFIGURATION (FAZ 6)
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .WriteTo.File("Logs/workflow-log-.txt", rollingInterval: RollingInterval.Day));
 
 // --- 1. SERVİS KAYITLARI ---
 builder.Services.AddEndpointsApiExplorer();
@@ -77,6 +86,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// SERILOG REQUEST LOGGING
+app.UseSerilogRequestLogging();
 
 // GÜVENLİK DUVARI (Middleware)
 // Controller'lardan önce çalışması şart!

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using WorkflowEngine.Core.DTOs;
 using WorkflowEngine.Core.Entities;
 using WorkflowEngine.Core.Enums;
@@ -15,19 +16,24 @@ namespace WorkflowEngine.Infrastructure.Services;
 public class WorkflowService : IWorkflowService
 {
     private readonly AppDbContext _context;
+    private readonly ILogger<WorkflowService> _logger;
 
-    public WorkflowService(AppDbContext context)
+    public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger)
     {
         _context = context;
+        _logger = logger;
     }
 
     public async Task<Guid> StartProcessAsync(string processCode, Guid userId)
     {
+        _logger.LogInformation("Starting process {ProcessCode} for user {UserId}", processCode, userId);
+
         var process = await _context.Processes
             .FirstOrDefaultAsync(p => p.Code == processCode && p.IsActive);
 
         if (process == null)
         {
+            _logger.LogWarning("Process not found or inactive: {ProcessCode}", processCode);
             throw new Exception($"Process not found or inactive: {processCode}");
         }
 
@@ -36,6 +42,7 @@ public class WorkflowService : IWorkflowService
 
         if (startStep == null)
         {
+            _logger.LogError("Start step not found for process: {ProcessCode}", processCode);
             throw new Exception($"Start step not found for process: {processCode}");
         }
 
@@ -69,11 +76,14 @@ public class WorkflowService : IWorkflowService
 
         await _context.SaveChangesAsync();
 
+        _logger.LogInformation("Process started successfully. RequestId: {RequestId}, RequestNumber: {RequestNumber}", request.Id, requestNumber);
         return request.Id;
     }
 
     public async Task ExecuteActionAsync(ExecuteActionDto dto)
     {
+        _logger.LogInformation("Executing action for Request {RequestId} by User {UserId}", dto.RequestId, dto.UserId);
+
         // 1. Get Request
         var request = await _context.ProcessRequests
             .Include(e => e.CurrentStep)
@@ -83,19 +93,21 @@ public class WorkflowService : IWorkflowService
 
         if (request == null)
         {
+            _logger.LogWarning("Process Request not found: {RequestId}", dto.RequestId);
             throw new Exception($"Process Request not found: {dto.RequestId}");
         }
 
         if (request.Status != ProcessRequestStatus.Active)
         {
+            _logger.LogWarning("Process Request is not active. Status: {Status}", request.Status);
             throw new Exception($"Process Request is not active. Status: {request.Status}");
         }
 
         // 2. Validate User Role (Mock: Check existence)
-        // In real app, check PePsConnection permissions or Step roles
         var user = await _context.WebUsers.FindAsync(dto.UserId);
         if (user == null || !user.IsActive)
         {
+            _logger.LogWarning("User not authorized or inactive: {UserId}", dto.UserId);
             throw new UnauthorizedAccessException("User not authorized or inactive.");
         }
 
@@ -112,7 +124,15 @@ public class WorkflowService : IWorkflowService
 
         if (action == null)
         {
+            _logger.LogWarning("Action not available in step '{StepName}'", request.CurrentStep.Name);
             throw new Exception($"Action not available in step '{request.CurrentStep.Name}'");
+        }
+
+        // 3.1 Validate Comment Requirement
+        if (action.IsCommentRequired && string.IsNullOrWhiteSpace(dto.Comments))
+        {
+            _logger.LogWarning("Missing required comment for action: {ActionName}", action.Name);
+            throw new Exception($"Comment is required for action: {action.Name}");
         }
 
         // 4. Form Validation & Data Saving
@@ -147,7 +167,7 @@ public class WorkflowService : IWorkflowService
                 switch (connection.ProcessEntry.EntryType)
                 {
                     case ProcessEntryType.Text:
-                    case ProcessEntryType.Select: // Assume select value is string
+                    case ProcessEntryType.Select:
                     case ProcessEntryType.File:
                         entryValue.StringValue = val.ToString();
                         break;
@@ -169,24 +189,15 @@ public class WorkflowService : IWorkflowService
 
         // 5. Rule Engine (Simple)
         Guid? targetStepId = action.TargetStepId;
-        Guid? defaultConditionId = action.DefaultConditionId;
 
-        // Check explicit conditions
         foreach (var condition in action.Conditions)
         {
-            // Evaluate RuleExpression. Assuming "Key Operator Value" e.g., "amount > 1000"
-            // For Phase 5, we do a very simple check or match against form values just submitted or saved.
-            // Simplified: If RuleExpression matches "Key == Value" (exact string match logic for simplicity)
-            // A real engine uses Expression Trees or a library like NRules/DynamicExpresso.
-
-            // NOTE: Implementing full parser is out of scope, using placeholder logic:
-            // If condition.RuleExpression is "true", we take it.
             if (condition.RuleExpression == "true") // Mock
             {
                 if (condition.TargetStepId.HasValue)
                 {
                     targetStepId = condition.TargetStepId.Value;
-                    break; // First match wins
+                    break;
                 }
             }
         }
@@ -214,7 +225,7 @@ public class WorkflowService : IWorkflowService
             ActionId = action.Id,
             ActorUserId = dto.UserId,
             ActionTime = DateTime.UtcNow,
-            Comments = $"Executed action: {action.Name}",
+            Comments = !string.IsNullOrWhiteSpace(dto.Comments) ? dto.Comments : $"Executed action: {action.Name}",
             CreatedAt = DateTime.UtcNow,
             CreatedBy = dto.UserId.ToString()
         };
@@ -222,6 +233,7 @@ public class WorkflowService : IWorkflowService
         _context.ProcessRequestHistories.Add(history);
 
         await _context.SaveChangesAsync();
+        _logger.LogInformation("Action executed successfully for Request {RequestId}", dto.RequestId);
     }
 
     public async Task<List<ProcessRequest>> GetUserTasksAsync(Guid userId)
@@ -231,5 +243,24 @@ public class WorkflowService : IWorkflowService
             .Include(e => e.CurrentStep)
             .Where(e => e.Status == ProcessRequestStatus.Active)
             .ToListAsync();
+    }
+
+    public async Task<List<ProcessHistoryDto>> GetRequestHistoryAsync(Guid requestId)
+    {
+        var history = await _context.ProcessRequestHistories
+            .Include(h => h.ActorUser)
+            .Include(h => h.Action)
+            .Where(h => h.ProcessRequestId == requestId)
+            .OrderByDescending(h => h.ActionTime)
+            .Select(h => new ProcessHistoryDto
+            {
+                ActionName = h.Action != null ? h.Action.Name : "System",
+                ActorName = h.ActorUser.Username,
+                Description = h.Comments,
+                CreatedAt = h.ActionTime
+            })
+            .ToListAsync();
+
+        return history;
     }
 }

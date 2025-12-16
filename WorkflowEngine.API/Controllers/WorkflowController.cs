@@ -21,12 +21,6 @@ public class WorkflowController : ControllerBase
     [HttpPost("start")]
     public async Task<IActionResult> StartProcess([FromQuery] string processCode)
     {
-        // Extract userId from Claims
-        // var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
-        // For Phase 5 Simplicity, we assume it's passed or extracted.
-        // Let's use a hardcoded user ID or extract properly if claim exists.
-        // Reverting to extracting from Claim 'sub' which we set in JwtTokenGenerator
-
         var userIdClaim = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
         if (userIdClaim == null) return Unauthorized();
 
@@ -49,7 +43,6 @@ public class WorkflowController : ControllerBase
         var userIdClaim = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
         if (userIdClaim == null) return Unauthorized();
 
-        // Ensure the DTO uses the authenticated user's ID for security
         dto.UserId = Guid.Parse(userIdClaim.Value);
 
         try
@@ -73,5 +66,19 @@ public class WorkflowController : ControllerBase
 
         var tasks = await _workflowService.GetUserTasksAsync(userId);
         return Ok(tasks);
+    }
+
+    [HttpGet("history/{requestId}")]
+    public async Task<IActionResult> GetHistory(Guid requestId)
+    {
+        try
+        {
+            var history = await _workflowService.GetRequestHistoryAsync(requestId);
+            return Ok(history);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 }
