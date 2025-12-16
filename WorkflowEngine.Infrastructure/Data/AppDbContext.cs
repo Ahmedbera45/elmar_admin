@@ -15,6 +15,8 @@ public class AppDbContext : DbContext
     public DbSet<ProcessAction> ProcessActions { get; set; }
     public DbSet<ProcessActionCondition> ProcessActionConditions { get; set; }
     public DbSet<WebUser> WebUsers { get; set; }
+    public DbSet<ProcessEntry> ProcessEntries { get; set; }
+    public DbSet<ProcessEntryHistory> ProcessEntryHistories { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -96,6 +98,60 @@ public class AppDbContext : DbContext
             entity.HasOne(e => e.TargetStep)
                   .WithMany()
                   .HasForeignKey(e => e.TargetStepId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ProcessEntry Configuration
+        modelBuilder.Entity<ProcessEntry>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EntryNumber).IsRequired().HasMaxLength(50);
+            entity.HasIndex(e => e.EntryNumber).IsUnique();
+
+            entity.HasOne(e => e.Process)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProcessId)
+                  .OnDelete(DeleteBehavior.Restrict); // Keep log even if definition changes/deleted? Or Cascade? Usually Restrict for historical data.
+
+            entity.HasOne(e => e.CurrentStep)
+                  .WithMany()
+                  .HasForeignKey(e => e.CurrentStepId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.InitiatorUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.InitiatorUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ProcessEntryHistory Configuration
+        modelBuilder.Entity<ProcessEntryHistory>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.ProcessEntry)
+                  .WithMany() // Can define collection in ProcessEntry if needed
+                  .HasForeignKey(e => e.ProcessEntryId)
+                  .OnDelete(DeleteBehavior.Cascade); // If Entry is deleted, history goes too.
+
+            entity.HasOne(e => e.FromStep)
+                  .WithMany()
+                  .HasForeignKey(e => e.FromStepId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.ToStep)
+                  .WithMany()
+                  .HasForeignKey(e => e.ToStepId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Action)
+                  .WithMany()
+                  .HasForeignKey(e => e.ActionId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.ActorUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.ActorUserId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
     }
