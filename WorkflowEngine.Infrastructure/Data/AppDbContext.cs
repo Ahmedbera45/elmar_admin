@@ -15,8 +15,16 @@ public class AppDbContext : DbContext
     public DbSet<ProcessAction> ProcessActions { get; set; }
     public DbSet<ProcessActionCondition> ProcessActionConditions { get; set; }
     public DbSet<WebUser> WebUsers { get; set; }
-    public DbSet<ProcessEntry> ProcessEntries { get; set; }
-    public DbSet<ProcessEntryHistory> ProcessEntryHistories { get; set; }
+
+    // Renamed ProcessEntry -> ProcessRequests
+    public DbSet<ProcessRequest> ProcessRequests { get; set; }
+    // Renamed ProcessEntryHistory -> ProcessRequestHistories
+    public DbSet<ProcessRequestHistory> ProcessRequestHistories { get; set; }
+
+    // New Phase 4 Form Builder DbSets
+    public DbSet<ProcessEntry> ProcessEntries { get; set; } // Form Field Definitions
+    public DbSet<PePsConnection> PePsConnections { get; set; }
+    public DbSet<ProcessRequestValue> ProcessRequestValues { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -101,17 +109,17 @@ public class AppDbContext : DbContext
                   .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // ProcessEntry Configuration
-        modelBuilder.Entity<ProcessEntry>(entity =>
+        // ProcessRequest Configuration (Renamed from ProcessEntry)
+        modelBuilder.Entity<ProcessRequest>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.EntryNumber).IsRequired().HasMaxLength(50);
-            entity.HasIndex(e => e.EntryNumber).IsUnique();
+            entity.Property(e => e.RequestNumber).IsRequired().HasMaxLength(50);
+            entity.HasIndex(e => e.RequestNumber).IsUnique();
 
             entity.HasOne(e => e.Process)
                   .WithMany()
                   .HasForeignKey(e => e.ProcessId)
-                  .OnDelete(DeleteBehavior.Restrict); // Keep log even if definition changes/deleted? Or Cascade? Usually Restrict for historical data.
+                  .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.CurrentStep)
                   .WithMany()
@@ -124,15 +132,15 @@ public class AppDbContext : DbContext
                   .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // ProcessEntryHistory Configuration
-        modelBuilder.Entity<ProcessEntryHistory>(entity =>
+        // ProcessRequestHistory Configuration (Renamed from ProcessEntryHistory)
+        modelBuilder.Entity<ProcessRequestHistory>(entity =>
         {
             entity.HasKey(e => e.Id);
 
-            entity.HasOne(e => e.ProcessEntry)
-                  .WithMany() // Can define collection in ProcessEntry if needed
-                  .HasForeignKey(e => e.ProcessEntryId)
-                  .OnDelete(DeleteBehavior.Cascade); // If Entry is deleted, history goes too.
+            entity.HasOne(e => e.ProcessRequest)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProcessRequestId)
+                  .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(e => e.FromStep)
                   .WithMany()
@@ -153,6 +161,51 @@ public class AppDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.ActorUserId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Phase 4: Form Builder Configuration
+
+        // ProcessEntry (Form Field Definition)
+        modelBuilder.Entity<ProcessEntry>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            // Unique key per system or per process? Usually unique Key is good practice but not strict DB constraint globally unless scoped.
+            // Let's assume Key should be unique for simplicity in lookups, or at least indexed.
+            entity.HasIndex(e => e.Key);
+        });
+
+        // PePsConnection (Step-Field Connection)
+        modelBuilder.Entity<PePsConnection>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.ProcessStep)
+                  .WithMany() // Step has many form fields connected
+                  .HasForeignKey(e => e.ProcessStepId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.ProcessEntry)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProcessEntryId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ProcessRequestValue (Answers)
+        modelBuilder.Entity<ProcessRequestValue>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.ProcessRequest)
+                  .WithMany() // Request has many values
+                  .HasForeignKey(e => e.ProcessRequestId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.ProcessEntry)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProcessEntryId)
+                  .OnDelete(DeleteBehavior.Restrict); // Don't delete value if definition changes? Or Cascade? Restrict is safer for data integrity.
         });
     }
 

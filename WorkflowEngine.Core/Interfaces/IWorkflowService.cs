@@ -9,5 +9,5 @@ public interface IWorkflowService
 {
     Task<Guid> StartProcessAsync(string processCode, Guid userId);
     Task ExecuteActionAsync(Guid entryId, string actionName, Guid userId, Dictionary<string, object> inputs);
-    Task<List<ProcessEntry>> GetUserTasksAsync(Guid userId);
+    Task<List<ProcessRequest>> GetUserTasksAsync(Guid userId);
 }
