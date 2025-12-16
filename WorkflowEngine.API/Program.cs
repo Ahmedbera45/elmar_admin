@@ -1,11 +1,20 @@
 using Microsoft.EntityFrameworkCore;
+using WorkflowEngine.API.Middlewares;
+using WorkflowEngine.Core.Interfaces;
 using WorkflowEngine.Infrastructure.Data;
+using WorkflowEngine.Infrastructure.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Core Services
+// MachineID should be Singleton as hardware doesn't change per request
+builder.Services.AddSingleton<IMachineIdGenerator, MachineIdGenerator>();
+// LicenseValidator can be Scoped or Transient
+builder.Services.AddScoped<ILicenseValidator, LicenseValidator>();
 
 // Database Strategy
 var dbProvider = builder.Configuration.GetValue<string>("DbProvider");
@@ -31,6 +40,9 @@ else
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+// Middleware order matters. License check should ideally be early.
+app.UseMiddleware<LicenseCheckMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
