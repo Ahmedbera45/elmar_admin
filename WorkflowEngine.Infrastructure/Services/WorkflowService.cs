@@ -23,7 +23,7 @@ public class WorkflowService : IWorkflowService
     {
         // 1. Find the active process definition
         var process = await _context.Processes
-            .Include(p => p.Steps) // Include steps to find Start step efficiently if loaded in memory, though we query Db directly below.
+            .Include(p => p.Steps)
             .FirstOrDefaultAsync(p => p.Code == processCode && p.IsActive);
 
         if (process == null)
@@ -40,92 +40,92 @@ public class WorkflowService : IWorkflowService
             throw new Exception($"Start step not found for process: {processCode}");
         }
 
-        // 3. Generate Entry Number
-        var entryNumber = $"PR-{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
+        // 3. Generate Request Number (Renamed from EntryNumber)
+        var requestNumber = $"PR-{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
 
-        // 4. Create Process Entry
-        var entry = new ProcessEntry
+        // 4. Create Process Request (Renamed from ProcessEntry)
+        var request = new ProcessRequest
         {
             ProcessId = process.Id,
             CurrentStepId = startStep.Id,
-            Status = ProcessEntryStatus.Active,
+            Status = ProcessEntryStatus.Active, // Still utilizing the same enum for status
             InitiatorUserId = userId,
-            EntryNumber = entryNumber,
+            RequestNumber = requestNumber,
             CreatedAt = DateTime.UtcNow,
             CreatedBy = userId.ToString()
         };
 
-        _context.ProcessEntries.Add(entry);
+        _context.ProcessRequests.Add(request);
 
         // 5. Create History Log
-        var history = new ProcessEntryHistory
+        var history = new ProcessRequestHistory
         {
-            ProcessEntryId = entry.Id,
+            ProcessRequestId = request.Id,
             ToStepId = startStep.Id,
             ActorUserId = userId,
             ActionTime = DateTime.UtcNow,
-            Comments = "Süreç Başlatıldı", // Updated comment as per request
+            Comments = "Süreç Başlatıldı",
             CreatedAt = DateTime.UtcNow,
             CreatedBy = userId.ToString()
         };
 
-        history.ProcessEntry = entry;
-        _context.ProcessEntryHistories.Add(history);
+        history.ProcessRequest = request;
+        _context.ProcessRequestHistories.Add(history);
 
         await _context.SaveChangesAsync();
 
-        return entry.Id;
+        return request.Id;
     }
 
-    public async Task ExecuteActionAsync(Guid entryId, string actionName, Guid userId, Dictionary<string, object> inputs)
+    public async Task ExecuteActionAsync(Guid requestId, string actionName, Guid userId, Dictionary<string, object> inputs)
     {
-        // 1. Get Entry with current step and its actions
-        var entry = await _context.ProcessEntries
+        // 1. Get Request with current step and its actions
+        var request = await _context.ProcessRequests
             .Include(e => e.CurrentStep)
             .ThenInclude(s => s.Actions)
-            .FirstOrDefaultAsync(e => e.Id == entryId);
+            .FirstOrDefaultAsync(e => e.Id == requestId);
 
-        if (entry == null)
+        if (request == null)
         {
-            throw new Exception($"Process Entry not found: {entryId}");
+            throw new Exception($"Process Request not found: {requestId}");
         }
 
-        if (entry.Status != ProcessEntryStatus.Active)
+        if (request.Status != ProcessEntryStatus.Active)
         {
-            throw new Exception($"Process Entry is not active. Status: {entry.Status}");
+            throw new Exception($"Process Request is not active. Status: {request.Status}");
         }
 
         // 2. Find the action in the current step
-        var action = entry.CurrentStep.Actions
+        var action = request.CurrentStep.Actions
             .FirstOrDefault(a => a.Name.Equals(actionName, StringComparison.OrdinalIgnoreCase));
 
         if (action == null)
         {
-            throw new Exception($"Action '{actionName}' not available in step '{entry.CurrentStep.Name}'");
+            throw new Exception($"Action '{actionName}' not available in step '{request.CurrentStep.Name}'");
         }
 
         // 3. Determine target step
         Guid? targetStepId = action.TargetStepId;
 
-        // 4. Update Entry
-        var previousStepId = entry.CurrentStepId;
+        // 4. Update Request
+        var previousStepId = request.CurrentStepId;
 
         if (targetStepId.HasValue)
         {
-            entry.CurrentStepId = targetStepId.Value;
+            request.CurrentStepId = targetStepId.Value;
 
             // Check if target step is an End step
             var targetStep = await _context.ProcessSteps.FindAsync(targetStepId.Value);
             if (targetStep != null && targetStep.StepType == ProcessStepType.End)
             {
-                entry.Status = ProcessEntryStatus.Completed;
+                request.Status = ProcessEntryStatus.Completed;
             }
         }
 
         // 5. Create History Log
-        var history = new ProcessEntryHistory
+        var history = new ProcessRequestHistory
         {
-            ProcessEntryId = entry.Id,
+            ProcessRequestId = request.Id,
             FromStepId = previousStepId,
             ToStepId = targetStepId ?? previousStepId,
             ActionId = action.Id,
@@ -136,18 +136,18 @@ public class WorkflowService : IWorkflowService
             CreatedBy = userId.ToString()
         };
 
-        _context.ProcessEntryHistories.Add(history);
+        _context.ProcessRequestHistories.Add(history);
 
         await _context.SaveChangesAsync();
     }
 
-    public async Task<List<ProcessEntry>> GetUserTasksAsync(Guid userId)
+    public async Task<List<ProcessRequest>> GetUserTasksAsync(Guid userId)
     {
-        // Return active entries
-        return await _context.ProcessEntries
+        // Return active requests
+        return await _context.ProcessRequests
             .Include(e => e.Process)
             .Include(e => e.CurrentStep)
-            .Where(e => e.Status == ProcessEntryStatus.Active) // Simple filtering as requested
+            .Where(e => e.Status == ProcessEntryStatus.Active) // Simple filtering
             .ToListAsync();
     }
 }

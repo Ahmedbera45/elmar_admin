@@ -6,14 +6,10 @@ namespace WorkflowEngine.Core.Entities;
 
 public class ProcessEntry : BaseEntity
 {
-    public Guid ProcessId { get; set; }
-    public Guid CurrentStepId { get; set; }
-    public ProcessEntryStatus Status { get; set; }
-    public Guid InitiatorUserId { get; set; }
-    public required string EntryNumber { get; set; }
-
-    // Navigation Properties
-    public Process Process { get; set; } = null!;
-    public ProcessStep CurrentStep { get; set; } = null!;
-    public WebUser InitiatorUser { get; set; } = null!;
+    public required string Key { get; set; }
+    public required string Title { get; set; }
+    public ProcessEntryType EntryType { get; set; }
+    public string? Options { get; set; } // JSON: [{"label":"A","value":"1"}]
+    public bool IsRequired { get; set; }
+    public string? ValidationRegex { get; set; }
 }
