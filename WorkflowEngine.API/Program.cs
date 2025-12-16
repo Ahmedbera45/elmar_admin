@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using WorkflowEngine.Infrastructure.Data;
 using WorkflowEngine.Infrastructure.Security;
+using WorkflowEngine.Infrastructure.Services;
 using WorkflowEngine.Core.Interfaces;
 using WorkflowEngine.API.Middlewares;
 
@@ -18,6 +19,9 @@ builder.Services.AddControllers();
 builder.Services.AddSingleton<IMachineIdGenerator, MachineIdGenerator>();
 builder.Services.AddScoped<ILicenseValidator, LicenseValidator>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
+
+// WORKFLOW ENGINE SERVİSLERİ (FAZ 3)
+builder.Services.AddScoped<IWorkflowService, WorkflowService>();
 
 // JWT AUTHENTICATION
 var jwtKey = builder.Configuration["JwtSettings:Key"];
