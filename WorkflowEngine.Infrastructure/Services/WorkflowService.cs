@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using WorkflowEngine.Core.DTOs;
 using WorkflowEngine.Core.Entities;
 using WorkflowEngine.Core.Enums;
 using WorkflowEngine.Core.Interfaces;
@@ -21,9 +23,7 @@ public class WorkflowService : IWorkflowService
 
     public async Task<Guid> StartProcessAsync(string processCode, Guid userId)
     {
-        // 1. Find the active process definition
         var process = await _context.Processes
-            .Include(p => p.Steps)
             .FirstOrDefaultAsync(p => p.Code == processCode && p.IsActive);
 
         if (process == null)
@@ -31,7 +31,6 @@ public class WorkflowService : IWorkflowService
             throw new Exception($"Process not found or inactive: {processCode}");
         }
 
-        // 2. Find the Start Step
         var startStep = await _context.ProcessSteps
             .FirstOrDefaultAsync(s => s.ProcessId == process.Id && s.StepType == ProcessStepType.Start);
 
@@ -40,15 +39,13 @@ public class WorkflowService : IWorkflowService
             throw new Exception($"Start step not found for process: {processCode}");
         }
 
-        // 3. Generate Request Number (Renamed from EntryNumber)
         var requestNumber = $"PR-{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
 
-        // 4. Create Process Request (Renamed from ProcessEntry)
         var request = new ProcessRequest
         {
             ProcessId = process.Id,
             CurrentStepId = startStep.Id,
-            Status = ProcessEntryStatus.Active, // Still utilizing the same enum for status
+            Status = ProcessRequestStatus.Active,
             InitiatorUserId = userId,
             RequestNumber = requestNumber,
             CreatedAt = DateTime.UtcNow,
@@ -57,10 +54,9 @@ public class WorkflowService : IWorkflowService
 
         _context.ProcessRequests.Add(request);
 
-        // 5. Create History Log
         var history = new ProcessRequestHistory
         {
-            ProcessRequestId = request.Id,
+            ProcessRequest = request,
             ToStepId = startStep.Id,
             ActorUserId = userId,
             ActionTime = DateTime.UtcNow,
@@ -69,7 +65,6 @@ public class WorkflowService : IWorkflowService
             CreatedBy = userId.ToString()
         };
 
-        history.ProcessRequest = request;
         _context.ProcessRequestHistories.Add(history);
 
         await _context.SaveChangesAsync();
@@ -77,63 +72,151 @@ public class WorkflowService : IWorkflowService
         return request.Id;
     }
 
-    public async Task ExecuteActionAsync(Guid requestId, string actionName, Guid userId, Dictionary<string, object> inputs)
+    public async Task ExecuteActionAsync(ExecuteActionDto dto)
     {
-        // 1. Get Request with current step and its actions
+        // 1. Get Request
         var request = await _context.ProcessRequests
             .Include(e => e.CurrentStep)
             .ThenInclude(s => s.Actions)
-            .FirstOrDefaultAsync(e => e.Id == requestId);
+            .ThenInclude(a => a.Conditions) // Include conditions for Rule Engine
+            .FirstOrDefaultAsync(e => e.Id == dto.RequestId);
 
         if (request == null)
         {
-            throw new Exception($"Process Request not found: {requestId}");
+            throw new Exception($"Process Request not found: {dto.RequestId}");
         }
 
-        if (request.Status != ProcessEntryStatus.Active)
+        if (request.Status != ProcessRequestStatus.Active)
         {
             throw new Exception($"Process Request is not active. Status: {request.Status}");
         }
 
-        // 2. Find the action in the current step
-        var action = request.CurrentStep.Actions
-            .FirstOrDefault(a => a.Name.Equals(actionName, StringComparison.OrdinalIgnoreCase));
+        // 2. Validate User Role (Mock: Check existence)
+        // In real app, check PePsConnection permissions or Step roles
+        var user = await _context.WebUsers.FindAsync(dto.UserId);
+        if (user == null || !user.IsActive)
+        {
+            throw new UnauthorizedAccessException("User not authorized or inactive.");
+        }
+
+        // 3. Find the Action
+        ProcessAction? action = null;
+        if (dto.ActionId.HasValue)
+        {
+            action = request.CurrentStep.Actions.FirstOrDefault(a => a.Id == dto.ActionId.Value);
+        }
+        else if (!string.IsNullOrEmpty(dto.ActionName))
+        {
+            action = request.CurrentStep.Actions.FirstOrDefault(a => a.Name.Equals(dto.ActionName, StringComparison.OrdinalIgnoreCase));
+        }
 
         if (action == null)
         {
-            throw new Exception($"Action '{actionName}' not available in step '{request.CurrentStep.Name}'");
+            throw new Exception($"Action not available in step '{request.CurrentStep.Name}'");
         }
 
-        // 3. Determine target step
-        Guid? targetStepId = action.TargetStepId;
+        // 4. Form Validation & Data Saving
+        var stepConnections = await _context.PePsConnections
+            .Include(c => c.ProcessEntry)
+            .Where(c => c.ProcessStepId == request.CurrentStepId)
+            .ToListAsync();
 
-        // 4. Update Request
+        foreach (var connection in stepConnections)
+        {
+            // Validate Required
+            if (connection.ProcessEntry.IsRequired && connection.PermissionType == ProcessEntryPermissionType.Write)
+            {
+                if (!dto.FormValues.ContainsKey(connection.ProcessEntry.Key))
+                {
+                    throw new Exception($"Missing required field: {connection.ProcessEntry.Title} ({connection.ProcessEntry.Key})");
+                }
+            }
+
+            // Save Value if Present
+            if (dto.FormValues.TryGetValue(connection.ProcessEntry.Key, out var val) && val != null)
+            {
+                var entryValue = new ProcessRequestValue
+                {
+                    ProcessRequestId = request.Id,
+                    ProcessEntryId = connection.ProcessEntry.Id,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = dto.UserId.ToString()
+                };
+
+                // Map value based on type
+                switch (connection.ProcessEntry.EntryType)
+                {
+                    case ProcessEntryType.Text:
+                    case ProcessEntryType.Select: // Assume select value is string
+                    case ProcessEntryType.File:
+                        entryValue.StringValue = val.ToString();
+                        break;
+                    case ProcessEntryType.Number:
+                        if (int.TryParse(val.ToString(), out int iVal)) entryValue.IntValue = iVal;
+                        else if (decimal.TryParse(val.ToString(), out decimal dVal)) entryValue.DecimalValue = dVal;
+                        break;
+                    case ProcessEntryType.Date:
+                        if (DateTime.TryParse(val.ToString(), out DateTime dtVal)) entryValue.DateValue = dtVal;
+                        break;
+                    case ProcessEntryType.Checkbox:
+                        if (bool.TryParse(val.ToString(), out bool bVal)) entryValue.BoolValue = bVal;
+                        break;
+                }
+
+                _context.ProcessRequestValues.Add(entryValue);
+            }
+        }
+
+        // 5. Rule Engine (Simple)
+        Guid? targetStepId = action.TargetStepId;
+        Guid? defaultConditionId = action.DefaultConditionId;
+
+        // Check explicit conditions
+        foreach (var condition in action.Conditions)
+        {
+            // Evaluate RuleExpression. Assuming "Key Operator Value" e.g., "amount > 1000"
+            // For Phase 5, we do a very simple check or match against form values just submitted or saved.
+            // Simplified: If RuleExpression matches "Key == Value" (exact string match logic for simplicity)
+            // A real engine uses Expression Trees or a library like NRules/DynamicExpresso.
+
+            // NOTE: Implementing full parser is out of scope, using placeholder logic:
+            // If condition.RuleExpression is "true", we take it.
+            if (condition.RuleExpression == "true") // Mock
+            {
+                if (condition.TargetStepId.HasValue)
+                {
+                    targetStepId = condition.TargetStepId.Value;
+                    break; // First match wins
+                }
+            }
+        }
+
+        // 6. Update Request (Transition)
         var previousStepId = request.CurrentStepId;
 
         if (targetStepId.HasValue)
         {
             request.CurrentStepId = targetStepId.Value;
 
-            // Check if target step is an End step
             var targetStep = await _context.ProcessSteps.FindAsync(targetStepId.Value);
             if (targetStep != null && targetStep.StepType == ProcessStepType.End)
             {
-                request.Status = ProcessEntryStatus.Completed;
+                request.Status = ProcessRequestStatus.Completed;
             }
         }
 
-        // 5. Create History Log
+        // 7. History
         var history = new ProcessRequestHistory
         {
             ProcessRequestId = request.Id,
             FromStepId = previousStepId,
             ToStepId = targetStepId ?? previousStepId,
             ActionId = action.Id,
-            ActorUserId = userId,
+            ActorUserId = dto.UserId,
             ActionTime = DateTime.UtcNow,
-            Comments = $"Executed action: {actionName}",
+            Comments = $"Executed action: {action.Name}",
             CreatedAt = DateTime.UtcNow,
-            CreatedBy = userId.ToString()
+            CreatedBy = dto.UserId.ToString()
         };
 
         _context.ProcessRequestHistories.Add(history);
@@ -143,11 +226,10 @@ public class WorkflowService : IWorkflowService
 
     public async Task<List<ProcessRequest>> GetUserTasksAsync(Guid userId)
     {
-        // Return active requests
         return await _context.ProcessRequests
             .Include(e => e.Process)
             .Include(e => e.CurrentStep)
-            .Where(e => e.Status == ProcessEntryStatus.Active) // Simple filtering
+            .Where(e => e.Status == ProcessRequestStatus.Active)
             .ToListAsync();
     }
 }
