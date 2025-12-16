@@ -26,6 +26,9 @@ public class AppDbContext : DbContext
     public DbSet<PePsConnection> PePsConnections { get; set; }
     public DbSet<ProcessRequestValue> ProcessRequestValues { get; set; }
 
+    // Phase 6.5 File Storage
+    public DbSet<FileMetadata> FileMetadatas { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -206,6 +209,15 @@ public class AppDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.ProcessEntryId)
                   .OnDelete(DeleteBehavior.Restrict); // Don't delete value if definition changes? Or Cascade? Restrict is safer for data integrity.
+        });
+
+        // Phase 6.5 File Metadata
+        modelBuilder.Entity<FileMetadata>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.StoredFileName).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.OriginalFileName).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.ContentType).IsRequired().HasMaxLength(100);
         });
     }
 

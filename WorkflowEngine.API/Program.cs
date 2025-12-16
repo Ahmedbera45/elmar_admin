@@ -7,13 +7,24 @@ using WorkflowEngine.Infrastructure.Security;
 using WorkflowEngine.Infrastructure.Services;
 using WorkflowEngine.Core.Interfaces;
 using WorkflowEngine.API.Middlewares;
+using Serilog;
+using WorkflowEngine.Infrastructure.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// SERILOG CONFIGURATION (FAZ 6)
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .WriteTo.File("Logs/workflow-log-.txt", rollingInterval: RollingInterval.Day));
 
 // --- 1. SERVİS KAYITLARI ---
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddControllers();
+builder.Services.AddSignalR(); // Add SignalR
 
 // GÜVENLİK SERVİSLERİ (FAZ 2)
 builder.Services.AddSingleton<IMachineIdGenerator, MachineIdGenerator>();
@@ -22,6 +33,10 @@ builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
 // WORKFLOW ENGINE SERVİSLERİ (FAZ 3)
 builder.Services.AddScoped<IWorkflowService, WorkflowService>();
+
+// ENTEGRASYON SERVİSLERİ (FAZ 6.5)
+builder.Services.AddScoped<IStorageService, LocalDiskStorageService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 // JWT AUTHENTICATION
 var jwtKey = builder.Configuration["JwtSettings:Key"];
@@ -78,6 +93,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// SERILOG REQUEST LOGGING
+app.UseSerilogRequestLogging();
+
 // GÜVENLİK DUVARI (Middleware)
 // Controller'lardan önce çalışması şart!
 app.UseMiddleware<LicenseCheckMiddleware>();
@@ -86,6 +104,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<NotificationHub>("/hub/notifications"); // Map SignalR Hub
 
 // Seed Database
 using (var scope = app.Services.CreateScope())
