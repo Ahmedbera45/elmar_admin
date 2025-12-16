@@ -1,6 +1,6 @@
 namespace WorkflowEngine.Core.Enums;
 
-public enum ProcessEntryStatus
+public enum ProcessRequestStatus
 {
     Active = 1,
     Completed = 2,
