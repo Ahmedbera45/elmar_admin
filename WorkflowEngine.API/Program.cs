@@ -1,22 +1,21 @@
 using Microsoft.EntityFrameworkCore;
-using WorkflowEngine.API.Middlewares;
-using WorkflowEngine.Core.Interfaces;
 using WorkflowEngine.Infrastructure.Data;
 using WorkflowEngine.Infrastructure.Security;
+using WorkflowEngine.Core.Interfaces;
+using WorkflowEngine.API.Middlewares;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// --- 1. SERVİS KAYITLARI ---
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddControllers();
 
-// Core Services
-// MachineID should be Singleton as hardware doesn't change per request
+// GÜVENLİK SERVİSLERİ (FAZ 2)
 builder.Services.AddSingleton<IMachineIdGenerator, MachineIdGenerator>();
-// LicenseValidator can be Scoped or Transient
 builder.Services.AddScoped<ILicenseValidator, LicenseValidator>();
 
-// Database Strategy
+// VERİTABANI AYARLARI (FAZ 1)
 var dbProvider = builder.Configuration.GetValue<string>("DbProvider");
 var connectionString = "";
 
@@ -34,21 +33,26 @@ else if (string.Equals(dbProvider, "MSSQL", StringComparison.OrdinalIgnoreCase))
 }
 else
 {
+    // Default veya Hata
     throw new Exception($"Unsupported DbProvider: {dbProvider}");
 }
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// --- 2. HTTP PIPELINE ---
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// Middleware order: Swagger -> License Check -> Redirection -> Controllers (implicitly at Run/End)
+app.UseHttpsRedirection();
+
+// GÜVENLİK DUVARI (Middleware)
+// Controller'lardan önce çalışması şart!
 app.UseMiddleware<LicenseCheckMiddleware>();
 
-app.UseHttpsRedirection();
+app.MapControllers();
 
 app.Run();
