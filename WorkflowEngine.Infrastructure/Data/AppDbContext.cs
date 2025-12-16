@@ -24,10 +24,18 @@ public class AppDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Code).IsRequired().HasMaxLength(50);
+            entity.HasIndex(e => e.Code).IsUnique(); // Ensure Code is unique
+
             entity.HasMany(e => e.Steps)
                   .WithOne(s => s.Process)
                   .HasForeignKey(s => s.ProcessId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.ParentProcess)
+                  .WithMany()
+                  .HasForeignKey(e => e.ParentProcessId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ProcessStep Configuration
@@ -46,10 +54,21 @@ public class AppDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+
             entity.HasOne(e => e.TargetStep)
-                  .WithMany() // No collection on the other side needed for now
+                  .WithMany()
                   .HasForeignKey(e => e.TargetStepId)
-                  .OnDelete(DeleteBehavior.Restrict); // Prevent cycles or accidental deletions
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.TimeoutAction)
+                  .WithMany()
+                  .HasForeignKey(e => e.TimeoutActionId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.DefaultCondition)
+                  .WithOne() // One-to-One (or many-to-one if modeled that way, but here ID is on Action)
+                  .HasForeignKey<ProcessAction>(e => e.DefaultConditionId)
+                  .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasMany(e => e.Conditions)
                   .WithOne(c => c.ProcessAction)
@@ -61,9 +80,12 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProcessActionCondition>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Key).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Operator).IsRequired().HasMaxLength(50);
-            entity.Property(e => e.Value).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.RuleExpression).IsRequired().HasMaxLength(1000);
+
+            entity.HasOne(e => e.TargetStep)
+                  .WithMany()
+                  .HasForeignKey(e => e.TargetStepId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

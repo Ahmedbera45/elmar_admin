@@ -6,16 +6,10 @@ namespace WorkflowEngine.Core.Entities;
 public class ProcessActionCondition : BaseEntity
 {
     public Guid ProcessActionId { get; set; }
+    public Guid? TargetStepId { get; set; }
+    public required string RuleExpression { get; set; }
 
-    // Example: "Role", "Amount", "Department"
-    public required string Key { get; set; }
-
-    // Example: "Equals", "GreaterThan", "Contains"
-    public required string Operator { get; set; }
-
-    // Example: "Manager", "1000", "IT"
-    public required string Value { get; set; }
-
-    // Navigation Property
+    // Navigation Properties
     public ProcessAction ProcessAction { get; set; } = null!;
+    public ProcessStep? TargetStep { get; set; }
 }

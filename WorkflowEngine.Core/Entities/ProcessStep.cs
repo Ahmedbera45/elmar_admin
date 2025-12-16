@@ -10,6 +10,7 @@ public class ProcessStep : BaseEntity
     public Guid ProcessId { get; set; }
     public required string Name { get; set; }
     public ProcessStepType StepType { get; set; }
+    public int OrderIndex { get; set; }
 
     // Navigation Properties
     public Process Process { get; set; } = null!;
