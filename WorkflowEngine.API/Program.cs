@@ -33,7 +33,6 @@ else if (string.Equals(dbProvider, "MSSQL", StringComparison.OrdinalIgnoreCase))
 }
 else
 {
-    // Default veya Hata
     throw new Exception($"Unsupported DbProvider: {dbProvider}");
 }
 
