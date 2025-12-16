@@ -40,14 +40,14 @@ else
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-// Middleware order matters. License check should ideally be early.
-app.UseMiddleware<LicenseCheckMiddleware>();
-
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Middleware order: Swagger -> License Check -> Redirection -> Controllers (implicitly at Run/End)
+app.UseMiddleware<LicenseCheckMiddleware>();
 
 app.UseHttpsRedirection();
 
