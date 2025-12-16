@@ -23,6 +23,7 @@ public class WorkflowService : IWorkflowService
     {
         // 1. Find the active process definition
         var process = await _context.Processes
+            .Include(p => p.Steps) // Include steps to find Start step efficiently if loaded in memory, though we query Db directly below.
             .FirstOrDefaultAsync(p => p.Code == processCode && p.IsActive);
 
         if (process == null)
@@ -39,8 +40,8 @@ public class WorkflowService : IWorkflowService
             throw new Exception($"Start step not found for process: {processCode}");
         }
 
-        // 3. Generate Entry Number (Simple implementation)
-        var entryNumber = $"PR-{DateTime.UtcNow.Year}-{new Random().Next(1000, 9999)}";
+        // 3. Generate Entry Number
+        var entryNumber = $"PR-{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
 
         // 4. Create Process Entry
         var entry = new ProcessEntry
@@ -59,18 +60,15 @@ public class WorkflowService : IWorkflowService
         // 5. Create History Log
         var history = new ProcessEntryHistory
         {
-            ProcessEntryId = entry.Id, // Will be set after SaveChanges, but EF Core handles this if added to context
-            // No FromStepId for start
+            ProcessEntryId = entry.Id,
             ToStepId = startStep.Id,
             ActorUserId = userId,
             ActionTime = DateTime.UtcNow,
-            Comments = "Process Started",
+            Comments = "Süreç Başlatıldı", // Updated comment as per request
             CreatedAt = DateTime.UtcNow,
             CreatedBy = userId.ToString()
         };
 
-        // Linking navigation property to ensure ID propagation if needed before save,
-        // though EF usually handles it. Explicitly adding to context is safer.
         history.ProcessEntry = entry;
         _context.ProcessEntryHistories.Add(history);
 
@@ -116,11 +114,7 @@ public class WorkflowService : IWorkflowService
         {
             entry.CurrentStepId = targetStepId.Value;
 
-            // Optional: Check if target step is an End step to mark process as completed?
-            // For now, we assume standard transition.
-            // We should fetch target step type to be precise, but for "Happy Path" instructions we update ID.
-
-            // Let's quickly check if the target step is an End step to auto-complete
+            // Check if target step is an End step
             var targetStep = await _context.ProcessSteps.FindAsync(targetStepId.Value);
             if (targetStep != null && targetStep.StepType == ProcessStepType.End)
             {
@@ -149,12 +143,11 @@ public class WorkflowService : IWorkflowService
 
     public async Task<List<ProcessEntry>> GetUserTasksAsync(Guid userId)
     {
-        // Simple implementation: Return active entries where user is initiator
-        // In a real system, this would check "Assignments" or "Roles" for the current step.
+        // Return active entries
         return await _context.ProcessEntries
             .Include(e => e.Process)
             .Include(e => e.CurrentStep)
-            .Where(e => e.InitiatorUserId == userId && e.Status == ProcessEntryStatus.Active)
+            .Where(e => e.Status == ProcessEntryStatus.Active) // Simple filtering as requested
             .ToListAsync();
     }
 }
