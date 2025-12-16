@@ -14,10 +14,21 @@ public class AppDbContext : DbContext
     public DbSet<ProcessStep> ProcessSteps { get; set; }
     public DbSet<ProcessAction> ProcessActions { get; set; }
     public DbSet<ProcessActionCondition> ProcessActionConditions { get; set; }
+    public DbSet<WebUser> WebUsers { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // WebUser Configuration
+        modelBuilder.Entity<WebUser>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Username).IsRequired().HasMaxLength(100);
+            entity.HasIndex(e => e.Username).IsUnique();
+            entity.Property(e => e.Email).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.PasswordHash).IsRequired();
+        });
 
         // Process Configuration
         modelBuilder.Entity<Process>(entity =>
