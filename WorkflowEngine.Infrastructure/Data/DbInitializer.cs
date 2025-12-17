@@ -17,7 +17,7 @@ public static class DbInitializer
         var adminUser = new WebUser
         {
             Username = "admin",
-            PasswordHash = "12345", // TODO: Use BCrypt in future
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345"),
             Email = "admin@belediye.gov.tr",
             Role = "Admin",
             Permissions = "All", // Assign all permissions
