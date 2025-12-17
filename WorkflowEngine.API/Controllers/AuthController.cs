@@ -32,8 +32,8 @@ public class AuthController : ControllerBase
             return Unauthorized("Invalid credentials or inactive user.");
         }
 
-        // Simple string comparison for now as requested (TODO: BCrypt)
-        if (user.PasswordHash != request.Password)
+        // Verify password using BCrypt
+        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
         {
             return Unauthorized("Invalid credentials.");
         }
