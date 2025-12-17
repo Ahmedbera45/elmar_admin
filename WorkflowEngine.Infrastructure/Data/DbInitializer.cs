@@ -8,9 +8,6 @@ public static class DbInitializer
 {
     public static void Initialize(AppDbContext context)
     {
-        // Ensure database is created (optional if using migrations, but helpful for quick start)
-        // context.Database.EnsureCreated();
-
         // Check if any users exist
         if (context.WebUsers.Any())
         {
@@ -23,6 +20,7 @@ public static class DbInitializer
             PasswordHash = "12345", // TODO: Use BCrypt in future
             Email = "admin@belediye.gov.tr",
             Role = "Admin",
+            Permissions = "All", // Assign all permissions
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             CreatedBy = "System"
