@@ -21,7 +21,14 @@ public class AuthController : ControllerBase
         _jwtTokenGenerator = jwtTokenGenerator;
     }
 
+    /// <summary>
+    /// Authenticates a user and returns a JWT token.
+    /// </summary>
+    /// <param name="request">Login credentials (username/password)</param>
+    /// <returns>JWT Token</returns>
     [HttpPost("login")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var user = await _context.WebUsers
