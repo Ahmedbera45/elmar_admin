@@ -12,8 +12,8 @@ using WorkflowEngine.Infrastructure.Data;
 namespace WorkflowEngine.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251216225509_AddFileMetadata")]
-    partial class AddFileMetadata
+    [Migration("20251217103152_AddPermissionsToUser")]
+    partial class AddPermissionsToUser
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -555,6 +555,9 @@ namespace WorkflowEngine.Infrastructure.Migrations
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Permissions")
                         .HasColumnType("text");
 
                     b.Property<string>("Role")
