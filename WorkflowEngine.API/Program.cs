@@ -9,6 +9,9 @@ using WorkflowEngine.Core.Interfaces;
 using WorkflowEngine.API.Middlewares;
 using Serilog;
 using WorkflowEngine.Infrastructure.Hubs;
+using Hangfire;
+using Hangfire.MemoryStorage;
+using WorkflowEngine.Infrastructure.Jobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,9 +25,21 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 
 // --- 1. SERVİS KAYITLARI ---
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    var xmlFilename = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    options.IncludeXmlComments(System.IO.Path.Combine(AppContext.BaseDirectory, xmlFilename));
+});
 builder.Services.AddControllers();
-builder.Services.AddSignalR(); // Add SignalR
+builder.Services.AddSignalR();
+
+// HANGFIRE CONFIGURATION (FAZ 6.5 Part 2)
+builder.Services.AddHangfire(config => config
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UseMemoryStorage());
+builder.Services.AddHangfireServer();
 
 // GÜVENLİK SERVİSLERİ (FAZ 2)
 builder.Services.AddSingleton<IMachineIdGenerator, MachineIdGenerator>();
@@ -37,6 +52,9 @@ builder.Services.AddScoped<IWorkflowService, WorkflowService>();
 // ENTEGRASYON SERVİSLERİ (FAZ 6.5)
 builder.Services.AddScoped<IStorageService, LocalDiskStorageService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+
+// JOBS
+builder.Services.AddScoped<TimeoutCheckerJob>();
 
 // JWT AUTHENTICATION
 var jwtKey = builder.Configuration["JwtSettings:Key"];
@@ -96,6 +114,9 @@ app.UseHttpsRedirection();
 // SERILOG REQUEST LOGGING
 app.UseSerilogRequestLogging();
 
+// HANGFIRE DASHBOARD
+app.UseHangfireDashboard("/hangfire");
+
 // GÜVENLİK DUVARI (Middleware)
 // Controller'lardan önce çalışması şart!
 app.UseMiddleware<LicenseCheckMiddleware>();
@@ -104,7 +125,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHub<NotificationHub>("/hub/notifications"); // Map SignalR Hub
+app.MapHub<NotificationHub>("/hub/notifications");
 
 // Seed Database
 using (var scope = app.Services.CreateScope())
@@ -116,11 +137,15 @@ using (var scope = app.Services.CreateScope())
         // Automatically apply migrations (Optional, but good for dev)
         // context.Database.Migrate();
         DbInitializer.Initialize(context);
+
+        // Schedule Recurring Jobs
+        var recurringJobManager = services.GetRequiredService<IRecurringJobManager>();
+        recurringJobManager.AddOrUpdate<TimeoutCheckerJob>("check-timeouts", job => job.CheckTimeoutsAsync(), Cron.Hourly);
     }
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred seeding the DB.");
+        logger.LogError(ex, "An error occurred seeding the DB or scheduling jobs.");
     }
 }
 
