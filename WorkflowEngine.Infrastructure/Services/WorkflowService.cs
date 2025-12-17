@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -17,11 +18,13 @@ public class WorkflowService : IWorkflowService
 {
     private readonly AppDbContext _context;
     private readonly ILogger<WorkflowService> _logger;
+    private readonly RuleEvaluator _ruleEvaluator;
 
     public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger)
     {
         _context = context;
         _logger = logger;
+        _ruleEvaluator = new RuleEvaluator();
     }
 
     public async Task<Guid> StartProcessAsync(string processCode, Guid userId)
@@ -103,7 +106,8 @@ public class WorkflowService : IWorkflowService
             throw new Exception($"Process Request is not active. Status: {request.Status}");
         }
 
-        // 2. Validate User Role (Mock: Check existence)
+        // 2. Validate User Role (Mock: Check existence, skip if System User - assuming System has a specific ID or we skip for internal calls if logic permits, but here we check existence)
+        // If it's a system call (from Job), userId might need to be handled. Assuming valid userId passed.
         var user = await _context.WebUsers.FindAsync(dto.UserId);
         if (user == null || !user.IsActive)
         {
@@ -155,6 +159,16 @@ public class WorkflowService : IWorkflowService
             // Save Value if Present
             if (dto.FormValues.TryGetValue(connection.ProcessEntry.Key, out var val) && val != null)
             {
+                // Regex Validation
+                if (!string.IsNullOrWhiteSpace(connection.ProcessEntry.ValidationRegex))
+                {
+                    if (!Regex.IsMatch(val.ToString() ?? "", connection.ProcessEntry.ValidationRegex))
+                    {
+                        throw new System.ComponentModel.DataAnnotations.ValidationException(
+                            $"Invalid format for field {connection.ProcessEntry.Title}. Value does not match pattern.");
+                    }
+                }
+
                 var entryValue = new ProcessRequestValue
                 {
                     ProcessRequestId = request.Id,
@@ -187,12 +201,14 @@ public class WorkflowService : IWorkflowService
             }
         }
 
-        // 5. Rule Engine (Simple)
+        // 5. Rule Engine (Real)
         Guid? targetStepId = action.TargetStepId;
 
+        // Evaluate conditions to override targetStepId
         foreach (var condition in action.Conditions)
         {
-            if (condition.RuleExpression == "true") // Mock
+            // Evaluate Rule
+            if (_ruleEvaluator.Evaluate(condition.RuleExpression, dto.FormValues))
             {
                 if (condition.TargetStepId.HasValue)
                 {
