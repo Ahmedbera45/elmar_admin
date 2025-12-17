@@ -73,9 +73,6 @@ public class LocalDiskStorageService : IStorageService
         }
 
         // Retrieve Metadata
-        // We assume filePath passed here matches StoredFileName in DB
-        // If paths differ (e.g. windows vs linux separators), might need normalization.
-        // For now, exact match.
         var metadata = await _context.FileMetadatas
             .FirstOrDefaultAsync(f => f.StoredFileName == filePath);
 
