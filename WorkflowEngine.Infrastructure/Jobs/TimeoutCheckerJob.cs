@@ -34,8 +34,6 @@ public class TimeoutCheckerJob
         foreach (var request in activeRequests)
         {
             // Find action with timeout in current step
-            // Assuming multiple actions, we pick the one with timeout configured.
-            // If multiple have timeout, business logic needed. For now, check any.
             var timeoutAction = request.CurrentStep.Actions
                 .FirstOrDefault(a => a.TimeoutSeconds.HasValue && a.TimeoutSeconds.Value > 0);
 
@@ -47,11 +45,6 @@ public class TimeoutCheckerJob
                 if (DateTime.UtcNow > timeoutTime)
                 {
                     _logger.LogWarning("Request {RequestNumber} timed out on step {StepName}", request.RequestNumber, request.CurrentStep.Name);
-
-                    // Logic to execute Timeout Action or Auto-reject?
-                    // Prompt says: "Zaman Aşımı logu atacak (şimdilik) bir metod yaz"
-                    // So just logging is enough for this task.
-                    // Future: Trigger TimeoutActionId
                 }
             }
         }
