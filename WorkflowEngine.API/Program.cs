@@ -52,6 +52,7 @@ builder.Services.AddScoped<IWorkflowService, WorkflowService>();
 // ENTEGRASYON SERVİSLERİ (FAZ 6.5)
 builder.Services.AddScoped<IStorageService, LocalDiskStorageService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IDocumentService, DocumentService>();
 
 // JOBS
 builder.Services.AddScoped<TimeoutCheckerJob>();

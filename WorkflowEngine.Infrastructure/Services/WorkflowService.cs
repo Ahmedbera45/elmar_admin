@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using WorkflowEngine.Core.Common;
 using WorkflowEngine.Core.DTOs;
 using WorkflowEngine.Core.Entities;
 using WorkflowEngine.Core.Enums;
@@ -21,14 +22,16 @@ public class WorkflowService : IWorkflowService
     private readonly AppDbContext _context;
     private readonly ILogger<WorkflowService> _logger;
     private readonly RuleEvaluator _ruleEvaluator;
+    private readonly INotificationService _notificationService;
 
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
-    public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger)
+    public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger, INotificationService notificationService)
     {
         _context = context;
         _logger = logger;
         _ruleEvaluator = new RuleEvaluator();
+        _notificationService = notificationService;
     }
 
     public async Task<Guid> StartProcessAsync(string processCode, Guid userId)
@@ -192,14 +195,11 @@ public class WorkflowService : IWorkflowService
             }
 
             // Phase 8.5: Calculation Engine
-            // Fetch entries for this step to check for formulas
-            // We need to fetch connections to find entries for this step
             var stepConnections = await _context.PePsConnections
                 .Include(c => c.ProcessEntry)
                 .Where(c => c.ProcessStepId == request.CurrentStepId)
                 .ToListAsync();
 
-            // Filter for calculation formulas
             var calculationEntries = stepConnections
                 .Where(c => !string.IsNullOrEmpty(c.ProcessEntry.CalculationFormula))
                 .Select(c => c.ProcessEntry)
@@ -207,7 +207,6 @@ public class WorkflowService : IWorkflowService
 
             foreach (var entry in calculationEntries)
             {
-                // Ensure formula is not null (double check)
                 if (entry.CalculationFormula != null)
                 {
                     var calculatedValue = _ruleEvaluator.EvaluateFormula(entry.CalculationFormula, dto.FormValues);
@@ -258,7 +257,6 @@ public class WorkflowService : IWorkflowService
                         case ProcessEntryType.Number:
                             if (int.TryParse(val.ToString(), out int iVal)) entryValue.IntValue = iVal;
                             else if (decimal.TryParse(val.ToString(), out decimal dVal)) entryValue.DecimalValue = dVal;
-                            // Also try to handle calculated values which might come as double/float from Dynamic Linq
                             else if (double.TryParse(val.ToString(), out double dblVal)) entryValue.DecimalValue = (decimal)dblVal;
                             break;
                         case ProcessEntryType.Date:
@@ -296,7 +294,6 @@ public class WorkflowService : IWorkflowService
                 var targetStep = await _context.ProcessSteps.FindAsync(targetStepId.Value);
                 if (targetStep != null)
                 {
-                    // Phase 8.5: SLA Management
                     if (targetStep.DurationMinutes.HasValue)
                     {
                         request.DueDate = DateTime.UtcNow.AddMinutes(targetStep.DurationMinutes.Value);
@@ -327,6 +324,26 @@ public class WorkflowService : IWorkflowService
             };
 
             _context.ProcessRequestHistories.Add(history);
+
+            // Phase 9: Notification Logic
+            var notifications = await _context.NotificationTemplates
+                .Where(n => n.ProcessActionId == action.Id)
+                .ToListAsync();
+
+            if (notifications.Any())
+            {
+                var notificationData = new Dictionary<string, object?>(dto.FormValues);
+                notificationData["RequestNumber"] = request.RequestNumber;
+                notificationData["Initiator"] = user.Username;
+
+                foreach (var note in notifications)
+                {
+                    var subject = TemplateHelper.ReplacePlaceholders(note.SubjectTemplate, notificationData);
+                    var body = TemplateHelper.ReplacePlaceholders(note.BodyTemplate, notificationData);
+
+                    await _notificationService.SendNotificationAsync(request.InitiatorUserId, $"{subject} - {body}");
+                }
+            }
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -370,7 +387,6 @@ public class WorkflowService : IWorkflowService
             .ToListAsync();
     }
 
-    // Phase 7: Dynamic Views
     public async Task<ProcessViewDefinitionDto?> GetProcessViewDefinitionAsync(string processCode)
     {
         var process = await _context.Processes
