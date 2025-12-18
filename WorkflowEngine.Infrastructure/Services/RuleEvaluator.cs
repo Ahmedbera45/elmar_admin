@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Dynamic.Core;
 using System.Linq.Expressions;
+using System.Text.Json;
 
 namespace WorkflowEngine.Infrastructure.Services;
 
@@ -106,6 +107,46 @@ public class RuleEvaluator
         {
             // Log or throw? Mock returned false.
             return false;
+        }
+    }
+
+    public object? EvaluateFormula(string formula, Dictionary<string, object?> inputs)
+    {
+        if (string.IsNullOrWhiteSpace(formula)) return null;
+
+        try
+        {
+            var dynamicObj = new System.Dynamic.ExpandoObject() as IDictionary<string, object?>;
+            foreach (var kvp in inputs)
+            {
+                var val = kvp.Value;
+                if (val is JsonElement je)
+                {
+                    if (je.ValueKind == JsonValueKind.Number)
+                    {
+                        if (je.TryGetInt32(out int i)) val = i;
+                        else if (je.TryGetDecimal(out decimal d)) val = d;
+                        else val = je.GetDouble();
+                    }
+                    else if (je.ValueKind == JsonValueKind.String)
+                    {
+                        val = je.GetString();
+                    }
+                    else if (je.ValueKind == JsonValueKind.True || je.ValueKind == JsonValueKind.False)
+                    {
+                        val = je.GetBoolean();
+                    }
+                }
+                dynamicObj[kvp.Key] = val ?? 0;
+            }
+
+            var queryable = new[] { dynamicObj }.AsQueryable();
+            var result = queryable.Select(formula).FirstOrDefault();
+            return result;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 }

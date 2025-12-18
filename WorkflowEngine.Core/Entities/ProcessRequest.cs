@@ -11,6 +11,7 @@ public class ProcessRequest : BaseEntity
     public ProcessRequestStatus Status { get; set; }
     public Guid InitiatorUserId { get; set; }
     public required string RequestNumber { get; set; }
+    public DateTime? DueDate { get; set; }
 
     // Navigation Properties
     public Process Process { get; set; } = null!;

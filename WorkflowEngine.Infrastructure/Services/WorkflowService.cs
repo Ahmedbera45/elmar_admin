@@ -62,6 +62,7 @@ public class WorkflowService : IWorkflowService
             catch (JsonException)
             {
                 _logger.LogError("Invalid JSON in AllowedRoles for process {ProcessId}", process.Id);
+                throw new UnauthorizedAccessException("Configuration error in process permissions.");
             }
         }
 
@@ -190,10 +191,33 @@ public class WorkflowService : IWorkflowService
                 throw new Exception($"Comment is required for action: {action.Name}");
             }
 
+            // Phase 8.5: Calculation Engine
+            // Fetch entries for this step to check for formulas
+            // We need to fetch connections to find entries for this step
             var stepConnections = await _context.PePsConnections
                 .Include(c => c.ProcessEntry)
                 .Where(c => c.ProcessStepId == request.CurrentStepId)
                 .ToListAsync();
+
+            // Filter for calculation formulas
+            var calculationEntries = stepConnections
+                .Where(c => !string.IsNullOrEmpty(c.ProcessEntry.CalculationFormula))
+                .Select(c => c.ProcessEntry)
+                .ToList();
+
+            foreach (var entry in calculationEntries)
+            {
+                // Ensure formula is not null (double check)
+                if (entry.CalculationFormula != null)
+                {
+                    var calculatedValue = _ruleEvaluator.EvaluateFormula(entry.CalculationFormula, dto.FormValues);
+                    if (calculatedValue != null)
+                    {
+                        dto.FormValues[entry.Key] = calculatedValue;
+                    }
+                }
+            }
+
 
             foreach (var connection in stepConnections)
             {
@@ -234,6 +258,8 @@ public class WorkflowService : IWorkflowService
                         case ProcessEntryType.Number:
                             if (int.TryParse(val.ToString(), out int iVal)) entryValue.IntValue = iVal;
                             else if (decimal.TryParse(val.ToString(), out decimal dVal)) entryValue.DecimalValue = dVal;
+                            // Also try to handle calculated values which might come as double/float from Dynamic Linq
+                            else if (double.TryParse(val.ToString(), out double dblVal)) entryValue.DecimalValue = (decimal)dblVal;
                             break;
                         case ProcessEntryType.Date:
                             if (DateTime.TryParse(val.ToString(), out DateTime dtVal)) entryValue.DateValue = dtVal;
@@ -268,9 +294,22 @@ public class WorkflowService : IWorkflowService
                 request.CurrentStepId = targetStepId.Value;
 
                 var targetStep = await _context.ProcessSteps.FindAsync(targetStepId.Value);
-                if (targetStep != null && targetStep.StepType == ProcessStepType.End)
+                if (targetStep != null)
                 {
-                    request.Status = ProcessRequestStatus.Completed;
+                    // Phase 8.5: SLA Management
+                    if (targetStep.DurationMinutes.HasValue)
+                    {
+                        request.DueDate = DateTime.UtcNow.AddMinutes(targetStep.DurationMinutes.Value);
+                    }
+                    else
+                    {
+                        request.DueDate = null;
+                    }
+
+                    if (targetStep.StepType == ProcessStepType.End)
+                    {
+                        request.Status = ProcessRequestStatus.Completed;
+                    }
                 }
             }
 
