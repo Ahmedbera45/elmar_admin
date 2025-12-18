@@ -1,4 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using WorkflowEngine.Core.Common;
 using WorkflowEngine.Core.Entities;
 
@@ -33,6 +38,11 @@ public class AppDbContext : DbContext
     public DbSet<RefreshToken> RefreshTokens { get; set; }
     public DbSet<ProcessListView> ProcessListViews { get; set; }
     public DbSet<ProcessListViewColumn> ProcessListViewColumns { get; set; }
+
+    // Phase 9: Document, Notification, Audit
+    public DbSet<ProcessDocumentTemplate> ProcessDocumentTemplates { get; set; }
+    public DbSet<NotificationTemplate> NotificationTemplates { get; set; }
+    public DbSet<AuditLog> AuditLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -179,8 +189,6 @@ public class AppDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Key).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
-            // Unique key per system or per process? Usually unique Key is good practice but not strict DB constraint globally unless scoped.
-            // Let's assume Key should be unique for simplicity in lookups, or at least indexed.
             entity.HasIndex(e => e.Key);
         });
 
@@ -190,7 +198,7 @@ public class AppDbContext : DbContext
             entity.HasKey(e => e.Id);
 
             entity.HasOne(e => e.ProcessStep)
-                  .WithMany() // Step has many form fields connected
+                  .WithMany()
                   .HasForeignKey(e => e.ProcessStepId)
                   .OnDelete(DeleteBehavior.Cascade);
 
@@ -206,14 +214,14 @@ public class AppDbContext : DbContext
             entity.HasKey(e => e.Id);
 
             entity.HasOne(e => e.ProcessRequest)
-                  .WithMany() // Request has many values
+                  .WithMany()
                   .HasForeignKey(e => e.ProcessRequestId)
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(e => e.ProcessEntry)
                   .WithMany()
                   .HasForeignKey(e => e.ProcessEntryId)
-                  .OnDelete(DeleteBehavior.Restrict); // Don't delete value if definition changes? Or Cascade? Restrict is safer for data integrity.
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         // Phase 6.5 File Metadata
@@ -258,9 +266,43 @@ public class AppDbContext : DbContext
             entity.Property(e => e.ProcessEntryId).IsRequired().HasMaxLength(100);
 
             entity.HasOne(e => e.ListView)
-                  .WithMany() // Assuming list has many columns, but no nav prop on ListView yet. Add if needed.
+                  .WithMany()
                   .HasForeignKey(e => e.ListViewId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Phase 9: Templates
+        modelBuilder.Entity<ProcessDocumentTemplate>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+
+            entity.HasOne(e => e.Process)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProcessId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Step)
+                  .WithMany()
+                  .HasForeignKey(e => e.StepId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<NotificationTemplate>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.ProcessAction)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProcessActionId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TableName).HasMaxLength(100);
+            entity.Property(e => e.RecordId).HasMaxLength(100);
+            entity.Property(e => e.Action).HasMaxLength(20);
         });
     }
 
@@ -270,10 +312,69 @@ public class AppDbContext : DbContext
         return base.SaveChanges();
     }
 
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         UpdateAuditFields();
-        return base.SaveChangesAsync(cancellationToken);
+        await AuditChanges();
+        return await base.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task AuditChanges()
+    {
+        var entries = ChangeTracker.Entries()
+            .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified || e.State == EntityState.Deleted)
+            .ToList();
+
+        foreach (var entry in entries)
+        {
+            if (entry.Entity is AuditLog) continue;
+
+            var audit = new AuditLog
+            {
+                Id = Guid.NewGuid(),
+                TableName = entry.Entity.GetType().Name,
+                Timestamp = DateTime.UtcNow,
+                Action = entry.State.ToString()
+            };
+
+            var oldValues = new Dictionary<string, object?>();
+            var newValues = new Dictionary<string, object?>();
+
+            foreach (var property in entry.Properties)
+            {
+                if (property.IsTemporary) continue;
+
+                string propName = property.Metadata.Name;
+
+                if (entry.State == EntityState.Added)
+                {
+                    newValues[propName] = property.CurrentValue;
+                }
+                else if (entry.State == EntityState.Deleted)
+                {
+                    oldValues[propName] = property.OriginalValue;
+                }
+                else if (entry.State == EntityState.Modified)
+                {
+                    if (property.IsModified)
+                    {
+                        oldValues[propName] = property.OriginalValue;
+                        newValues[propName] = property.CurrentValue;
+                    }
+                }
+            }
+
+            audit.OldValues = oldValues.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(oldValues);
+            audit.NewValues = newValues.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(newValues);
+
+            var idProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "Id");
+            if (idProp != null)
+            {
+                 audit.RecordId = idProp.CurrentValue?.ToString() ?? "Pending";
+            }
+
+            this.AuditLogs.Add(audit);
+        }
     }
 
     private void UpdateAuditFields()
