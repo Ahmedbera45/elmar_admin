@@ -62,14 +62,6 @@ public class TimeoutCheckerJob
                     {
                          try
                          {
-                             // Execute the Timeout Action
-                             // Note: TimeoutActionId points to another Action definition that should be executed.
-                             // Usually, this 'Timeout Action' is a special action (e.g., 'AutoReject') available on the step.
-                             // Or it refers to the ID of the action to trigger.
-
-                             // Logic: The configuration says "If this action times out, trigger THAT action".
-                             // Let's assume TimeoutActionId IS the ID of the action to execute.
-
                              await _workflowService.ExecuteActionAsync(new ExecuteActionDto
                              {
                                  RequestId = request.Id,
@@ -87,6 +79,35 @@ public class TimeoutCheckerJob
                     }
                 }
             }
+        }
+
+        // SLA Check (Overdue Requests)
+        var overdueRequests = await _context.ProcessRequests
+            .Where(r => r.Status == ProcessRequestStatus.Active && r.DueDate.HasValue && r.DueDate.Value < DateTime.UtcNow)
+            .ToListAsync();
+
+        foreach (var request in overdueRequests)
+        {
+             _logger.LogWarning("Request {RequestNumber} breached SLA. Auto-cancelling.", request.RequestNumber);
+             request.Status = ProcessRequestStatus.Cancelled;
+
+             var history = new ProcessRequestHistory
+             {
+                 ProcessRequestId = request.Id,
+                 FromStepId = request.CurrentStepId,
+                 ToStepId = request.CurrentStepId,
+                 ActorUserId = systemUser.Id,
+                 ActionTime = DateTime.UtcNow,
+                 Comments = "System: Auto-cancelled due to SLA breach (Overdue)",
+                 CreatedAt = DateTime.UtcNow,
+                 CreatedBy = systemUser.Id.ToString()
+             };
+             _context.ProcessRequestHistories.Add(history);
+        }
+
+        if (overdueRequests.Any())
+        {
+            await _context.SaveChangesAsync();
         }
 
         _logger.LogInformation("TimeoutCheckerJob finished.");
