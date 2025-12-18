@@ -14,6 +14,8 @@ public class Process : BaseEntity
     public required string Code { get; set; }
     public Guid? ParentProcessId { get; set; }
 
+    public string? AllowedRoles { get; set; } // JSON array of roles e.g. ["Admin", "HR"]
+
     // Navigation Properties
     public Process? ParentProcess { get; set; }
     public ICollection<ProcessStep> Steps { get; set; } = new List<ProcessStep>();

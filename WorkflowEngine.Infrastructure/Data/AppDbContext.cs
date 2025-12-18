@@ -29,6 +29,11 @@ public class AppDbContext : DbContext
     // Phase 6.5 File Storage
     public DbSet<FileMetadata> FileMetadatas { get; set; }
 
+    // Phase 7: Security and Dynamic Views
+    public DbSet<RefreshToken> RefreshTokens { get; set; }
+    public DbSet<ProcessListView> ProcessListViews { get; set; }
+    public DbSet<ProcessListViewColumn> ProcessListViewColumns { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -218,6 +223,44 @@ public class AppDbContext : DbContext
             entity.Property(e => e.StoredFileName).IsRequired().HasMaxLength(255);
             entity.Property(e => e.OriginalFileName).IsRequired().HasMaxLength(255);
             entity.Property(e => e.ContentType).IsRequired().HasMaxLength(100);
+        });
+
+        // Phase 7: RefreshToken
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Token).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.JwtId).IsRequired().HasMaxLength(100);
+
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Phase 7: ProcessListView
+        modelBuilder.Entity<ProcessListView>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+
+            entity.HasOne(e => e.Process)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProcessId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Phase 7: ProcessListViewColumn
+        modelBuilder.Entity<ProcessListViewColumn>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.ProcessEntryId).IsRequired().HasMaxLength(100);
+
+            entity.HasOne(e => e.ListView)
+                  .WithMany() // Assuming list has many columns, but no nav prop on ListView yet. Add if needed.
+                  .HasForeignKey(e => e.ListViewId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

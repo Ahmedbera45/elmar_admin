@@ -149,4 +149,32 @@ public class WorkflowController : ControllerBase
             return BadRequest(ex.Message);
         }
     }
+
+    /// <summary>
+    /// Retrieves the dynamic list view definition for a process.
+    /// </summary>
+    /// <param name="processCode">The process code.</param>
+    /// <returns>Column definitions.</returns>
+    [HttpGet("process/{processCode}/view-definition")]
+    public async Task<IActionResult> GetProcessViewDefinition(string processCode)
+    {
+        var definition = await _workflowService.GetProcessViewDefinitionAsync(processCode);
+        if (definition == null) return NotFound("View definition not found for this process.");
+        return Ok(definition);
+    }
+
+    /// <summary>
+    /// Retrieves requests for a process with dynamic column data.
+    /// </summary>
+    /// <param name="processCode">The process code.</param>
+    /// <returns>List of requests with dynamic values.</returns>
+    [HttpGet("process/{processCode}/requests")]
+    public async Task<IActionResult> GetProcessRequests(string processCode)
+    {
+        // Add permission check here if needed (e.g. only users who can see this process)
+        // For now relying on [Authorize]
+
+        var requests = await _workflowService.GetProcessRequestsAsync(processCode);
+        return Ok(requests);
+    }
 }

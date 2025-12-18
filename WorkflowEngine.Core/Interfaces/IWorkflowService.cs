@@ -12,4 +12,6 @@ public interface IWorkflowService
     Task ExecuteActionAsync(ExecuteActionDto dto);
     Task<List<ProcessRequest>> GetUserTasksAsync(Guid userId);
     Task<List<ProcessHistoryDto>> GetRequestHistoryAsync(Guid requestId);
+    Task<ProcessViewDefinitionDto?> GetProcessViewDefinitionAsync(string processCode);
+    Task<List<ProcessRequestListDto>> GetProcessRequestsAsync(string processCode);
 }
