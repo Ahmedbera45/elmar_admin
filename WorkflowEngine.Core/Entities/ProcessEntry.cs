@@ -12,4 +12,5 @@ public class ProcessEntry : BaseEntity
     public string? Options { get; set; } // JSON: [{"label":"A","value":"1"}]
     public bool IsRequired { get; set; }
     public string? ValidationRegex { get; set; }
+    public string? CalculationFormula { get; set; }
 }

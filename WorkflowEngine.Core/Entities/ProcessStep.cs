@@ -11,6 +11,7 @@ public class ProcessStep : BaseEntity
     public required string Name { get; set; }
     public ProcessStepType StepType { get; set; }
     public int OrderIndex { get; set; }
+    public int? DurationMinutes { get; set; }
 
     // Navigation Properties
     public Process Process { get; set; } = null!;
