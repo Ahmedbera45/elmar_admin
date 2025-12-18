@@ -64,6 +64,13 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 builder.Services.AddMemoryCache();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+    });
+});
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -170,6 +177,7 @@ app.UseHangfireDashboard("/hangfire");
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseMiddleware<LicenseCheckMiddleware>();
 
+app.UseCors("AllowAll");
 app.UseRateLimiter();
 
 app.UseAuthentication();
