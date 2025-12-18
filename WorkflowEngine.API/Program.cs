@@ -1,5 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using WorkflowEngine.Infrastructure.Data;
@@ -57,6 +59,22 @@ builder.Services.AddSwaggerGen(options =>
 });
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
+builder.Services.AddMemoryCache();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? httpContext.Request.Headers.Host.ToString(),
+            factory: partition => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 10,
+                QueueLimit = 5,
+                Window = TimeSpan.FromSeconds(1)
+            }));
+    options.RejectionStatusCode = 429;
+});
 
 // HANGFIRE CONFIGURATION (FAZ 6.5 Part 2)
 builder.Services.AddHangfire(config => config
@@ -147,6 +165,8 @@ app.UseHangfireDashboard("/hangfire");
 // Controller'lardan önce çalışması şart!
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseMiddleware<LicenseCheckMiddleware>();
+
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
