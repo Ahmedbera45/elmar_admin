@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using WorkflowEngine.Core.Common;
 using WorkflowEngine.Core.DTOs;
@@ -23,23 +24,72 @@ public class WorkflowService : IWorkflowService
     private readonly ILogger<WorkflowService> _logger;
     private readonly RuleEvaluator _ruleEvaluator;
     private readonly INotificationService _notificationService;
+    private readonly IMemoryCache _cache;
 
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
-    public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger, INotificationService notificationService)
+    public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger, INotificationService notificationService, IMemoryCache cache)
     {
         _context = context;
         _logger = logger;
         _ruleEvaluator = new RuleEvaluator();
         _notificationService = notificationService;
+        _cache = cache;
+    }
+
+    private async Task<Process?> GetCachedProcessAsync(string processCode)
+    {
+        string key = $"ProcessDef_{processCode}";
+        return await _cache.GetOrCreateAsync(key, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30);
+            return await _context.Processes
+                .FirstOrDefaultAsync(p => p.Code == processCode && p.IsActive);
+        });
+    }
+
+    private async Task<ProcessStep?> GetCachedStartStepAsync(Guid processId)
+    {
+        string key = $"StartStep_{processId}";
+        return await _cache.GetOrCreateAsync(key, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30);
+            return await _context.ProcessSteps
+                .FirstOrDefaultAsync(s => s.ProcessId == processId && s.StepType == ProcessStepType.Start);
+        });
+    }
+
+    private async Task<ProcessStep?> GetCachedStepWithActionsAsync(Guid stepId)
+    {
+        string key = $"StepDef_{stepId}";
+        return await _cache.GetOrCreateAsync(key, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30);
+            return await _context.ProcessSteps
+                .Include(s => s.Actions)
+                .ThenInclude(a => a.Conditions)
+                .FirstOrDefaultAsync(s => s.Id == stepId);
+        });
+    }
+
+    private async Task<List<PePsConnection>> GetCachedStepConnectionsAsync(Guid stepId)
+    {
+        string key = $"StepConnections_{stepId}";
+        return await _cache.GetOrCreateAsync(key, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30);
+            return await _context.PePsConnections
+                .Include(c => c.ProcessEntry)
+                .Where(c => c.ProcessStepId == stepId)
+                .ToListAsync();
+        }) ?? new List<PePsConnection>();
     }
 
     public async Task<Guid> StartProcessAsync(string processCode, Guid userId)
     {
         _logger.LogInformation("Starting process {ProcessCode} for user {UserId}", processCode, userId);
 
-        var process = await _context.Processes
-            .FirstOrDefaultAsync(p => p.Code == processCode && p.IsActive);
+        var process = await GetCachedProcessAsync(processCode);
 
         if (process == null)
         {
@@ -69,8 +119,7 @@ public class WorkflowService : IWorkflowService
             }
         }
 
-        var startStep = await _context.ProcessSteps
-            .FirstOrDefaultAsync(s => s.ProcessId == process.Id && s.StepType == ProcessStepType.Start);
+        var startStep = await GetCachedStartStepAsync(process.Id);
 
         if (startStep == null)
         {
@@ -124,9 +173,6 @@ public class WorkflowService : IWorkflowService
             _logger.LogInformation("Executing action for Request {RequestId} by User {UserId}", dto.RequestId, dto.UserId);
 
             var request = await _context.ProcessRequests
-                .Include(e => e.CurrentStep)
-                .ThenInclude(s => s.Actions)
-                .ThenInclude(a => a.Conditions)
                 .FirstOrDefaultAsync(e => e.Id == dto.RequestId);
 
             if (request == null)
@@ -145,19 +191,23 @@ public class WorkflowService : IWorkflowService
                 throw new UnauthorizedAccessException("User not authorized or inactive.");
             }
 
+            // Cache Implementation: Get Step Definition
+            var currentStep = await GetCachedStepWithActionsAsync(request.CurrentStepId);
+            if (currentStep == null) throw new Exception("Current step definition not found.");
+
             ProcessAction? action = null;
             if (dto.ActionId.HasValue)
             {
-                action = request.CurrentStep.Actions.FirstOrDefault(a => a.Id == dto.ActionId.Value);
+                action = currentStep.Actions.FirstOrDefault(a => a.Id == dto.ActionId.Value);
             }
             else if (!string.IsNullOrEmpty(dto.ActionName))
             {
-                action = request.CurrentStep.Actions.FirstOrDefault(a => a.Name.Equals(dto.ActionName, StringComparison.OrdinalIgnoreCase));
+                action = currentStep.Actions.FirstOrDefault(a => a.Name.Equals(dto.ActionName, StringComparison.OrdinalIgnoreCase));
             }
 
             if (action == null)
             {
-                 throw new Exception($"Action not available in step '{request.CurrentStep.Name}'");
+                 throw new Exception($"Action not available in step '{currentStep.Name}'");
             }
 
             // Phase 7: Withdraw Logic
@@ -195,10 +245,7 @@ public class WorkflowService : IWorkflowService
             }
 
             // Phase 8.5: Calculation Engine
-            var stepConnections = await _context.PePsConnections
-                .Include(c => c.ProcessEntry)
-                .Where(c => c.ProcessStepId == request.CurrentStepId)
-                .ToListAsync();
+            var stepConnections = await GetCachedStepConnectionsAsync(request.CurrentStepId);
 
             var calculationEntries = stepConnections
                 .Where(c => !string.IsNullOrEmpty(c.ProcessEntry.CalculationFormula))
