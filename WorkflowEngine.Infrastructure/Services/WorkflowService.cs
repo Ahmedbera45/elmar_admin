@@ -546,4 +546,58 @@ public class WorkflowService : IWorkflowService
             .Select(c => c.ProcessEntry)
             .ToListAsync();
     }
+
+    public async Task<RequestDetailDto?> GetRequestDetailAsync(Guid requestId)
+    {
+        var request = await _context.ProcessRequests
+            .Include(r => r.Process)
+            .Include(r => r.CurrentStep)
+            .ThenInclude(s => s.Actions)
+            .Include(r => r.InitiatorUser)
+            .FirstOrDefaultAsync(r => r.Id == requestId);
+
+        if (request == null) return null;
+
+        var dto = new RequestDetailDto
+        {
+            Id = request.Id,
+            RequestNumber = request.RequestNumber,
+            ProcessName = request.Process.Name,
+            CurrentStepName = request.CurrentStep.Name,
+            Status = request.Status,
+            CreatedAt = request.CreatedAt,
+            InitiatorName = request.InitiatorUser.Username
+        };
+
+        var values = await _context.ProcessRequestValues
+            .Include(v => v.ProcessEntry)
+            .Where(v => v.ProcessRequestId == requestId)
+            .ToListAsync();
+
+        foreach (var v in values)
+        {
+            object? val = v.StringValue;
+            if (v.IntValue.HasValue) val = v.IntValue;
+            else if (v.DecimalValue.HasValue) val = v.DecimalValue;
+            else if (v.DateValue.HasValue) val = v.DateValue;
+            else if (v.BoolValue.HasValue) val = v.BoolValue;
+
+            dto.FormValues[v.ProcessEntry.Key] = val;
+        }
+
+        dto.History = await GetRequestHistoryAsync(requestId);
+
+        if (request.Status == ProcessRequestStatus.Active)
+        {
+            dto.NextActions = request.CurrentStep.Actions.Select(a => new ProcessActionDto
+            {
+                Id = a.Id,
+                Name = a.Name,
+                ActionType = a.ActionType,
+                IsCommentRequired = a.IsCommentRequired
+            }).ToList();
+        }
+
+        return dto;
+    }
 }

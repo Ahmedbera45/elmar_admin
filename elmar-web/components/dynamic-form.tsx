@@ -21,9 +21,10 @@ interface DynamicFormProps {
   defaultValues?: any;
   onSubmit: (data: any) => void;
   submitLabel?: string;
+  readOnly?: boolean;
 }
 
-export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "Submit" }: DynamicFormProps) {
+export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "Submit", readOnly = false }: DynamicFormProps) {
   const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: defaultValues || {},
   });
@@ -42,12 +43,13 @@ export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "S
 
         return (
           <div key={entry.key} className="space-y-2">
-            <Label htmlFor={entry.key}>{entry.title} {entry.isRequired && <span className="text-red-500">*</span>}</Label>
+            <Label htmlFor={entry.key}>{entry.title} {!readOnly && entry.isRequired && <span className="text-red-500">*</span>}</Label>
 
             {entry.entryType === 'Text' && (
               <Input
                 id={entry.key}
-                {...register(entry.key, { required: entry.isRequired })}
+                disabled={readOnly}
+                {...register(entry.key, { required: !readOnly && entry.isRequired })}
               />
             )}
 
@@ -55,7 +57,8 @@ export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "S
               <Input
                 id={entry.key}
                 type="number"
-                {...register(entry.key, { required: entry.isRequired, valueAsNumber: true })}
+                disabled={readOnly}
+                {...register(entry.key, { required: !readOnly && entry.isRequired, valueAsNumber: true })}
               />
             )}
 
@@ -63,7 +66,8 @@ export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "S
               <Input
                 id={entry.key}
                 type="date"
-                {...register(entry.key, { required: entry.isRequired })}
+                disabled={readOnly}
+                {...register(entry.key, { required: !readOnly && entry.isRequired })}
               />
             )}
 
@@ -71,18 +75,19 @@ export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "S
               <Select
                 id={entry.key}
                 options={options}
-                {...register(entry.key, { required: entry.isRequired })}
+                disabled={readOnly}
+                {...register(entry.key, { required: !readOnly && entry.isRequired })}
               />
             )}
 
-            {errors[entry.key] && (
+            {!readOnly && errors[entry.key] && (
               <span className="text-sm text-red-500">This field is required</span>
             )}
           </div>
         );
       })}
 
-      <Button type="submit">{submitLabel}</Button>
+      {!readOnly && <Button type="submit">{submitLabel}</Button>}
     </form>
   );
 }

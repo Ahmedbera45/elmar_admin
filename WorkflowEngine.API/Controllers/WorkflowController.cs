@@ -194,4 +194,12 @@ public class WorkflowController : ControllerBase
         var fields = await _workflowService.GetStepFormFieldsAsync(req.CurrentStepId);
         return Ok(fields);
     }
+
+    [HttpGet("request/{id}/detail")]
+    public async Task<IActionResult> GetRequestDetail(Guid id)
+    {
+        var detail = await _workflowService.GetRequestDetailAsync(id);
+        if (detail == null) return NotFound();
+        return Ok(detail);
+    }
 }
