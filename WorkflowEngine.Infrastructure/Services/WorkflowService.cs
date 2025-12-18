@@ -22,7 +22,6 @@ public class WorkflowService : IWorkflowService
     private readonly ILogger<WorkflowService> _logger;
     private readonly RuleEvaluator _ruleEvaluator;
 
-    // In-memory lock for request concurrency (Phase 6.9 Hardening)
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
     public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger)
@@ -43,6 +42,27 @@ public class WorkflowService : IWorkflowService
         {
             _logger.LogWarning("Process not found or inactive: {ProcessCode}", processCode);
             throw new Exception($"Process not found or inactive: {processCode}");
+        }
+
+        // Phase 7: RBAC Check
+        var user = await _context.WebUsers.FindAsync(userId);
+        if (user == null) throw new UnauthorizedAccessException("User not found.");
+
+        if (!string.IsNullOrEmpty(process.AllowedRoles))
+        {
+            try
+            {
+                var allowedRoles = JsonSerializer.Deserialize<List<string>>(process.AllowedRoles);
+                if (allowedRoles != null && allowedRoles.Any() && !allowedRoles.Contains(user.Role))
+                {
+                    _logger.LogWarning("User {UserId} with role {Role} not allowed to start process {ProcessCode}", userId, user.Role, processCode);
+                    throw new UnauthorizedAccessException("You do not have permission to start this process.");
+                }
+            }
+            catch (JsonException)
+            {
+                _logger.LogError("Invalid JSON in AllowedRoles for process {ProcessId}", process.Id);
+            }
         }
 
         var startStep = await _context.ProcessSteps
@@ -90,45 +110,37 @@ public class WorkflowService : IWorkflowService
 
     public async Task ExecuteActionAsync(ExecuteActionDto dto)
     {
-        // 1. Lock Mechanism
         var semaphore = _locks.GetOrAdd(dto.RequestId, _ => new SemaphoreSlim(1, 1));
         await semaphore.WaitAsync();
 
-        // 2. Transaction
         using var transaction = await _context.Database.BeginTransactionAsync();
 
         try
         {
             _logger.LogInformation("Executing action for Request {RequestId} by User {UserId}", dto.RequestId, dto.UserId);
 
-            // 1. Get Request
             var request = await _context.ProcessRequests
                 .Include(e => e.CurrentStep)
                 .ThenInclude(s => s.Actions)
-                .ThenInclude(a => a.Conditions) // Include conditions for Rule Engine
+                .ThenInclude(a => a.Conditions)
                 .FirstOrDefaultAsync(e => e.Id == dto.RequestId);
 
             if (request == null)
             {
-                _logger.LogWarning("Process Request not found: {RequestId}", dto.RequestId);
                 throw new Exception($"Process Request not found: {dto.RequestId}");
             }
 
             if (request.Status != ProcessRequestStatus.Active)
             {
-                _logger.LogWarning("Process Request is not active. Status: {Status}", request.Status);
                 throw new Exception($"Process Request is not active. Status: {request.Status}");
             }
 
-            // 2. Validate User Role (Mock: Check existence, skip if System User - assuming System has a specific ID or we skip for internal calls if logic permits, but here we check existence)
             var user = await _context.WebUsers.FindAsync(dto.UserId);
             if (user == null || !user.IsActive)
             {
-                _logger.LogWarning("User not authorized or inactive: {UserId}", dto.UserId);
                 throw new UnauthorizedAccessException("User not authorized or inactive.");
             }
 
-            // 3. Find the Action
             ProcessAction? action = null;
             if (dto.ActionId.HasValue)
             {
@@ -141,18 +153,43 @@ public class WorkflowService : IWorkflowService
 
             if (action == null)
             {
-                _logger.LogWarning("Action not available in step '{StepName}'", request.CurrentStep.Name);
-                throw new Exception($"Action not available in step '{request.CurrentStep.Name}'");
+                 throw new Exception($"Action not available in step '{request.CurrentStep.Name}'");
             }
 
-            // 3.1 Validate Comment Requirement
+            // Phase 7: Withdraw Logic
+            if (action.ActionType == ProcessActionType.Withdraw)
+            {
+                if (request.InitiatorUserId != dto.UserId && user.Role != "Admin")
+                {
+                    throw new UnauthorizedAccessException("Only the initiator or an Admin can withdraw the request.");
+                }
+
+                request.Status = ProcessRequestStatus.Cancelled;
+
+                var cancelHistory = new ProcessRequestHistory
+                {
+                    ProcessRequestId = request.Id,
+                    FromStepId = request.CurrentStepId,
+                    ToStepId = request.CurrentStepId,
+                    ActionId = action.Id,
+                    ActorUserId = dto.UserId,
+                    ActionTime = DateTime.UtcNow,
+                    Comments = !string.IsNullOrWhiteSpace(dto.Comments) ? dto.Comments : "Process Withdrawn by User",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = dto.UserId.ToString()
+                };
+
+                _context.ProcessRequestHistories.Add(cancelHistory);
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return;
+            }
+
             if (action.IsCommentRequired && string.IsNullOrWhiteSpace(dto.Comments))
             {
-                _logger.LogWarning("Missing required comment for action: {ActionName}", action.Name);
                 throw new Exception($"Comment is required for action: {action.Name}");
             }
 
-            // 4. Form Validation & Data Saving
             var stepConnections = await _context.PePsConnections
                 .Include(c => c.ProcessEntry)
                 .Where(c => c.ProcessStepId == request.CurrentStepId)
@@ -160,7 +197,6 @@ public class WorkflowService : IWorkflowService
 
             foreach (var connection in stepConnections)
             {
-                // Validate Required
                 if (connection.ProcessEntry.IsRequired && connection.PermissionType == ProcessEntryPermissionType.Write)
                 {
                     if (!dto.FormValues.ContainsKey(connection.ProcessEntry.Key))
@@ -169,10 +205,8 @@ public class WorkflowService : IWorkflowService
                     }
                 }
 
-                // Save Value if Present
                 if (dto.FormValues.TryGetValue(connection.ProcessEntry.Key, out var val) && val != null)
                 {
-                    // Regex Validation
                     if (!string.IsNullOrWhiteSpace(connection.ProcessEntry.ValidationRegex))
                     {
                         if (!Regex.IsMatch(val.ToString() ?? "", connection.ProcessEntry.ValidationRegex))
@@ -190,7 +224,6 @@ public class WorkflowService : IWorkflowService
                         CreatedBy = dto.UserId.ToString()
                     };
 
-                    // Map value based on type
                     switch (connection.ProcessEntry.EntryType)
                     {
                         case ProcessEntryType.Text:
@@ -214,12 +247,10 @@ public class WorkflowService : IWorkflowService
                 }
             }
 
-            // 5. Rule Engine (Real)
             Guid? targetStepId = action.TargetStepId;
 
             foreach (var condition in action.Conditions)
             {
-                // Evaluate Rule
                 if (_ruleEvaluator.Evaluate(condition.RuleExpression, dto.FormValues))
                 {
                     if (condition.TargetStepId.HasValue)
@@ -230,7 +261,6 @@ public class WorkflowService : IWorkflowService
                 }
             }
 
-            // 6. Update Request (Transition)
             var previousStepId = request.CurrentStepId;
 
             if (targetStepId.HasValue)
@@ -244,7 +274,6 @@ public class WorkflowService : IWorkflowService
                 }
             }
 
-            // 7. History
             var history = new ProcessRequestHistory
             {
                 ProcessRequestId = request.Id,
@@ -261,20 +290,18 @@ public class WorkflowService : IWorkflowService
             _context.ProcessRequestHistories.Add(history);
 
             await _context.SaveChangesAsync();
-            await transaction.CommitAsync(); // Commit transaction
+            await transaction.CommitAsync();
 
             _logger.LogInformation("Action executed successfully for Request {RequestId}", dto.RequestId);
         }
         catch (Exception)
         {
-            await transaction.RollbackAsync(); // Rollback on error
+            await transaction.RollbackAsync();
             throw;
         }
         finally
         {
-            semaphore.Release(); // Release lock
-            // We do not remove the semaphore here to avoid race conditions with checking/adding,
-            // though it causes memory growth over time. For this phase, it is acceptable or we can use a cache with expiry.
+            semaphore.Release();
         }
     }
 
@@ -289,7 +316,7 @@ public class WorkflowService : IWorkflowService
 
     public async Task<List<ProcessHistoryDto>> GetRequestHistoryAsync(Guid requestId)
     {
-        var history = await _context.ProcessRequestHistories
+        return await _context.ProcessRequestHistories
             .Include(h => h.ActorUser)
             .Include(h => h.Action)
             .Where(h => h.ProcessRequestId == requestId)
@@ -302,7 +329,101 @@ public class WorkflowService : IWorkflowService
                 CreatedAt = h.ActionTime
             })
             .ToListAsync();
+    }
 
-        return history;
+    // Phase 7: Dynamic Views
+    public async Task<ProcessViewDefinitionDto?> GetProcessViewDefinitionAsync(string processCode)
+    {
+        var process = await _context.Processes
+            .Include(p => p.Steps)
+            .FirstOrDefaultAsync(p => p.Code == processCode);
+
+        if (process == null) return null;
+
+        var listView = await _context.ProcessListViews
+            .Include(lv => lv.Process)
+            .FirstOrDefaultAsync(lv => lv.ProcessId == process.Id);
+
+        if (listView == null) return null;
+
+        var columns = await _context.ProcessListViewColumns
+            .Where(c => c.ListViewId == listView.Id)
+            .OrderBy(c => c.OrderIndex)
+            .Select(c => new ProcessViewColumnDto
+            {
+                Key = c.ProcessEntryId,
+                Title = c.Title,
+                OrderIndex = c.OrderIndex,
+                Width = c.Width
+            })
+            .ToListAsync();
+
+        return new ProcessViewDefinitionDto
+        {
+            ProcessTitle = listView.Title,
+            Columns = columns
+        };
+    }
+
+    public async Task<List<ProcessRequestListDto>> GetProcessRequestsAsync(string processCode)
+    {
+        var process = await _context.Processes.FirstOrDefaultAsync(p => p.Code == processCode);
+        if (process == null) return new List<ProcessRequestListDto>();
+
+        var listView = await _context.ProcessListViews.FirstOrDefaultAsync(lv => lv.ProcessId == process.Id);
+        var columns = listView != null
+            ? await _context.ProcessListViewColumns.Where(c => c.ListViewId == listView.Id).ToListAsync()
+            : new List<ProcessListViewColumn>();
+
+        var requests = await _context.ProcessRequests
+            .Where(r => r.ProcessId == process.Id)
+            .ToListAsync();
+
+        var result = new List<ProcessRequestListDto>();
+
+        var requestIds = requests.Select(r => r.Id).ToList();
+        var columnKeys = columns.Select(c => c.ProcessEntryId).ToList();
+
+        var values = await _context.ProcessRequestValues
+            .Include(v => v.ProcessEntry)
+            .Where(v => requestIds.Contains(v.ProcessRequestId) && columnKeys.Contains(v.ProcessEntry.Key))
+            .ToListAsync();
+
+        foreach (var req in requests)
+        {
+            var dto = new ProcessRequestListDto
+            {
+                Id = req.Id,
+                Status = req.Status,
+                CreatedAt = req.CreatedAt,
+                InitiatorUserId = req.InitiatorUserId
+            };
+
+            foreach (var col in columns)
+            {
+                var val = values
+                    .OrderByDescending(v => v.CreatedAt)
+                    .FirstOrDefault(v => v.ProcessRequestId == req.Id && v.ProcessEntry.Key == col.ProcessEntryId);
+
+                if (val != null)
+                {
+                    object? objVal = null;
+                    if (val.StringValue != null) objVal = val.StringValue;
+                    else if (val.IntValue.HasValue) objVal = val.IntValue;
+                    else if (val.DecimalValue.HasValue) objVal = val.DecimalValue;
+                    else if (val.DateValue.HasValue) objVal = val.DateValue;
+                    else if (val.BoolValue.HasValue) objVal = val.BoolValue;
+
+                    dto.DynamicValues[col.ProcessEntryId] = objVal;
+                }
+                else
+                {
+                    dto.DynamicValues[col.ProcessEntryId] = null;
+                }
+            }
+            result.Add(dto);
+        }
+
+        return result;
     }
 }

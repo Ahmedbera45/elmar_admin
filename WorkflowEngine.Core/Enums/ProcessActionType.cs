@@ -7,5 +7,6 @@ public enum ProcessActionType
     RequestChange = 3,
     Cancel = 4,
     Delegate = 5,
-    Submit = 6
+    Submit = 6,
+    Withdraw = 7
 }
