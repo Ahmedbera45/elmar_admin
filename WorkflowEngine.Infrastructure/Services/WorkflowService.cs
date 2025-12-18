@@ -528,4 +528,22 @@ public class WorkflowService : IWorkflowService
 
         return result;
     }
+
+    public async Task<ProcessRequest?> GetRequestAsync(Guid requestId)
+    {
+        return await _context.ProcessRequests
+            // Include Action for Frontend to see available buttons
+            .Include(r => r.CurrentStep)
+            .ThenInclude(s => s.Actions)
+            .FirstOrDefaultAsync(r => r.Id == requestId);
+    }
+
+    public async Task<List<ProcessEntry>> GetStepFormFieldsAsync(Guid stepId)
+    {
+        return await _context.PePsConnections
+            .Include(c => c.ProcessEntry)
+            .Where(c => c.ProcessStepId == stepId)
+            .Select(c => c.ProcessEntry)
+            .ToListAsync();
+    }
 }

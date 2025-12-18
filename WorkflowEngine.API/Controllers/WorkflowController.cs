@@ -177,4 +177,21 @@ public class WorkflowController : ControllerBase
         var requests = await _workflowService.GetProcessRequestsAsync(processCode);
         return Ok(requests);
     }
+
+    [HttpGet("request/{id}")]
+    public async Task<IActionResult> GetRequest(Guid id)
+    {
+        var req = await _workflowService.GetRequestAsync(id);
+        if (req == null) return NotFound();
+        return Ok(req);
+    }
+
+    [HttpGet("request/{id}/form")]
+    public async Task<IActionResult> GetRequestForm(Guid id)
+    {
+        var req = await _workflowService.GetRequestAsync(id);
+        if (req == null) return NotFound();
+        var fields = await _workflowService.GetStepFormFieldsAsync(req.CurrentStepId);
+        return Ok(fields);
+    }
 }
