@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -19,6 +21,9 @@ public class WorkflowService : IWorkflowService
     private readonly AppDbContext _context;
     private readonly ILogger<WorkflowService> _logger;
     private readonly RuleEvaluator _ruleEvaluator;
+
+    // In-memory lock for request concurrency (Phase 6.9 Hardening)
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
     public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger)
     {
@@ -85,171 +90,192 @@ public class WorkflowService : IWorkflowService
 
     public async Task ExecuteActionAsync(ExecuteActionDto dto)
     {
-        _logger.LogInformation("Executing action for Request {RequestId} by User {UserId}", dto.RequestId, dto.UserId);
+        // 1. Lock Mechanism
+        var semaphore = _locks.GetOrAdd(dto.RequestId, _ => new SemaphoreSlim(1, 1));
+        await semaphore.WaitAsync();
 
-        // 1. Get Request
-        var request = await _context.ProcessRequests
-            .Include(e => e.CurrentStep)
-            .ThenInclude(s => s.Actions)
-            .ThenInclude(a => a.Conditions) // Include conditions for Rule Engine
-            .FirstOrDefaultAsync(e => e.Id == dto.RequestId);
+        // 2. Transaction
+        using var transaction = await _context.Database.BeginTransactionAsync();
 
-        if (request == null)
+        try
         {
-            _logger.LogWarning("Process Request not found: {RequestId}", dto.RequestId);
-            throw new Exception($"Process Request not found: {dto.RequestId}");
-        }
+            _logger.LogInformation("Executing action for Request {RequestId} by User {UserId}", dto.RequestId, dto.UserId);
 
-        if (request.Status != ProcessRequestStatus.Active)
-        {
-            _logger.LogWarning("Process Request is not active. Status: {Status}", request.Status);
-            throw new Exception($"Process Request is not active. Status: {request.Status}");
-        }
+            // 1. Get Request
+            var request = await _context.ProcessRequests
+                .Include(e => e.CurrentStep)
+                .ThenInclude(s => s.Actions)
+                .ThenInclude(a => a.Conditions) // Include conditions for Rule Engine
+                .FirstOrDefaultAsync(e => e.Id == dto.RequestId);
 
-        // 2. Validate User Role (Mock: Check existence, skip if System User - assuming System has a specific ID or we skip for internal calls if logic permits, but here we check existence)
-        // If it's a system call (from Job), userId might need to be handled. Assuming valid userId passed.
-        var user = await _context.WebUsers.FindAsync(dto.UserId);
-        if (user == null || !user.IsActive)
-        {
-            _logger.LogWarning("User not authorized or inactive: {UserId}", dto.UserId);
-            throw new UnauthorizedAccessException("User not authorized or inactive.");
-        }
-
-        // 3. Find the Action
-        ProcessAction? action = null;
-        if (dto.ActionId.HasValue)
-        {
-            action = request.CurrentStep.Actions.FirstOrDefault(a => a.Id == dto.ActionId.Value);
-        }
-        else if (!string.IsNullOrEmpty(dto.ActionName))
-        {
-            action = request.CurrentStep.Actions.FirstOrDefault(a => a.Name.Equals(dto.ActionName, StringComparison.OrdinalIgnoreCase));
-        }
-
-        if (action == null)
-        {
-            _logger.LogWarning("Action not available in step '{StepName}'", request.CurrentStep.Name);
-            throw new Exception($"Action not available in step '{request.CurrentStep.Name}'");
-        }
-
-        // 3.1 Validate Comment Requirement
-        if (action.IsCommentRequired && string.IsNullOrWhiteSpace(dto.Comments))
-        {
-            _logger.LogWarning("Missing required comment for action: {ActionName}", action.Name);
-            throw new Exception($"Comment is required for action: {action.Name}");
-        }
-
-        // 4. Form Validation & Data Saving
-        var stepConnections = await _context.PePsConnections
-            .Include(c => c.ProcessEntry)
-            .Where(c => c.ProcessStepId == request.CurrentStepId)
-            .ToListAsync();
-
-        foreach (var connection in stepConnections)
-        {
-            // Validate Required
-            if (connection.ProcessEntry.IsRequired && connection.PermissionType == ProcessEntryPermissionType.Write)
+            if (request == null)
             {
-                if (!dto.FormValues.ContainsKey(connection.ProcessEntry.Key))
-                {
-                    throw new Exception($"Missing required field: {connection.ProcessEntry.Title} ({connection.ProcessEntry.Key})");
-                }
+                _logger.LogWarning("Process Request not found: {RequestId}", dto.RequestId);
+                throw new Exception($"Process Request not found: {dto.RequestId}");
             }
 
-            // Save Value if Present
-            if (dto.FormValues.TryGetValue(connection.ProcessEntry.Key, out var val) && val != null)
+            if (request.Status != ProcessRequestStatus.Active)
             {
-                // Regex Validation
-                if (!string.IsNullOrWhiteSpace(connection.ProcessEntry.ValidationRegex))
+                _logger.LogWarning("Process Request is not active. Status: {Status}", request.Status);
+                throw new Exception($"Process Request is not active. Status: {request.Status}");
+            }
+
+            // 2. Validate User Role (Mock: Check existence, skip if System User - assuming System has a specific ID or we skip for internal calls if logic permits, but here we check existence)
+            var user = await _context.WebUsers.FindAsync(dto.UserId);
+            if (user == null || !user.IsActive)
+            {
+                _logger.LogWarning("User not authorized or inactive: {UserId}", dto.UserId);
+                throw new UnauthorizedAccessException("User not authorized or inactive.");
+            }
+
+            // 3. Find the Action
+            ProcessAction? action = null;
+            if (dto.ActionId.HasValue)
+            {
+                action = request.CurrentStep.Actions.FirstOrDefault(a => a.Id == dto.ActionId.Value);
+            }
+            else if (!string.IsNullOrEmpty(dto.ActionName))
+            {
+                action = request.CurrentStep.Actions.FirstOrDefault(a => a.Name.Equals(dto.ActionName, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (action == null)
+            {
+                _logger.LogWarning("Action not available in step '{StepName}'", request.CurrentStep.Name);
+                throw new Exception($"Action not available in step '{request.CurrentStep.Name}'");
+            }
+
+            // 3.1 Validate Comment Requirement
+            if (action.IsCommentRequired && string.IsNullOrWhiteSpace(dto.Comments))
+            {
+                _logger.LogWarning("Missing required comment for action: {ActionName}", action.Name);
+                throw new Exception($"Comment is required for action: {action.Name}");
+            }
+
+            // 4. Form Validation & Data Saving
+            var stepConnections = await _context.PePsConnections
+                .Include(c => c.ProcessEntry)
+                .Where(c => c.ProcessStepId == request.CurrentStepId)
+                .ToListAsync();
+
+            foreach (var connection in stepConnections)
+            {
+                // Validate Required
+                if (connection.ProcessEntry.IsRequired && connection.PermissionType == ProcessEntryPermissionType.Write)
                 {
-                    if (!Regex.IsMatch(val.ToString() ?? "", connection.ProcessEntry.ValidationRegex))
+                    if (!dto.FormValues.ContainsKey(connection.ProcessEntry.Key))
                     {
-                        throw new System.ComponentModel.DataAnnotations.ValidationException(
-                            $"Invalid format for field {connection.ProcessEntry.Title}. Value does not match pattern.");
+                        throw new Exception($"Missing required field: {connection.ProcessEntry.Title} ({connection.ProcessEntry.Key})");
                     }
                 }
 
-                var entryValue = new ProcessRequestValue
+                // Save Value if Present
+                if (dto.FormValues.TryGetValue(connection.ProcessEntry.Key, out var val) && val != null)
                 {
-                    ProcessRequestId = request.Id,
-                    ProcessEntryId = connection.ProcessEntry.Id,
-                    CreatedAt = DateTime.UtcNow,
-                    CreatedBy = dto.UserId.ToString()
-                };
+                    // Regex Validation
+                    if (!string.IsNullOrWhiteSpace(connection.ProcessEntry.ValidationRegex))
+                    {
+                        if (!Regex.IsMatch(val.ToString() ?? "", connection.ProcessEntry.ValidationRegex))
+                        {
+                            throw new System.ComponentModel.DataAnnotations.ValidationException(
+                                $"Invalid format for field {connection.ProcessEntry.Title}. Value does not match pattern.");
+                        }
+                    }
 
-                // Map value based on type
-                switch (connection.ProcessEntry.EntryType)
-                {
-                    case ProcessEntryType.Text:
-                    case ProcessEntryType.Select:
-                    case ProcessEntryType.File:
-                        entryValue.StringValue = val.ToString();
-                        break;
-                    case ProcessEntryType.Number:
-                        if (int.TryParse(val.ToString(), out int iVal)) entryValue.IntValue = iVal;
-                        else if (decimal.TryParse(val.ToString(), out decimal dVal)) entryValue.DecimalValue = dVal;
-                        break;
-                    case ProcessEntryType.Date:
-                        if (DateTime.TryParse(val.ToString(), out DateTime dtVal)) entryValue.DateValue = dtVal;
-                        break;
-                    case ProcessEntryType.Checkbox:
-                        if (bool.TryParse(val.ToString(), out bool bVal)) entryValue.BoolValue = bVal;
-                        break;
-                }
+                    var entryValue = new ProcessRequestValue
+                    {
+                        ProcessRequestId = request.Id,
+                        ProcessEntryId = connection.ProcessEntry.Id,
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = dto.UserId.ToString()
+                    };
 
-                _context.ProcessRequestValues.Add(entryValue);
-            }
-        }
+                    // Map value based on type
+                    switch (connection.ProcessEntry.EntryType)
+                    {
+                        case ProcessEntryType.Text:
+                        case ProcessEntryType.Select:
+                        case ProcessEntryType.File:
+                            entryValue.StringValue = val.ToString();
+                            break;
+                        case ProcessEntryType.Number:
+                            if (int.TryParse(val.ToString(), out int iVal)) entryValue.IntValue = iVal;
+                            else if (decimal.TryParse(val.ToString(), out decimal dVal)) entryValue.DecimalValue = dVal;
+                            break;
+                        case ProcessEntryType.Date:
+                            if (DateTime.TryParse(val.ToString(), out DateTime dtVal)) entryValue.DateValue = dtVal;
+                            break;
+                        case ProcessEntryType.Checkbox:
+                            if (bool.TryParse(val.ToString(), out bool bVal)) entryValue.BoolValue = bVal;
+                            break;
+                    }
 
-        // 5. Rule Engine (Real)
-        Guid? targetStepId = action.TargetStepId;
-
-        // Evaluate conditions to override targetStepId
-        foreach (var condition in action.Conditions)
-        {
-            // Evaluate Rule
-            if (_ruleEvaluator.Evaluate(condition.RuleExpression, dto.FormValues))
-            {
-                if (condition.TargetStepId.HasValue)
-                {
-                    targetStepId = condition.TargetStepId.Value;
-                    break;
+                    _context.ProcessRequestValues.Add(entryValue);
                 }
             }
-        }
 
-        // 6. Update Request (Transition)
-        var previousStepId = request.CurrentStepId;
+            // 5. Rule Engine (Real)
+            Guid? targetStepId = action.TargetStepId;
 
-        if (targetStepId.HasValue)
-        {
-            request.CurrentStepId = targetStepId.Value;
-
-            var targetStep = await _context.ProcessSteps.FindAsync(targetStepId.Value);
-            if (targetStep != null && targetStep.StepType == ProcessStepType.End)
+            foreach (var condition in action.Conditions)
             {
-                request.Status = ProcessRequestStatus.Completed;
+                // Evaluate Rule
+                if (_ruleEvaluator.Evaluate(condition.RuleExpression, dto.FormValues))
+                {
+                    if (condition.TargetStepId.HasValue)
+                    {
+                        targetStepId = condition.TargetStepId.Value;
+                        break;
+                    }
+                }
             }
+
+            // 6. Update Request (Transition)
+            var previousStepId = request.CurrentStepId;
+
+            if (targetStepId.HasValue)
+            {
+                request.CurrentStepId = targetStepId.Value;
+
+                var targetStep = await _context.ProcessSteps.FindAsync(targetStepId.Value);
+                if (targetStep != null && targetStep.StepType == ProcessStepType.End)
+                {
+                    request.Status = ProcessRequestStatus.Completed;
+                }
+            }
+
+            // 7. History
+            var history = new ProcessRequestHistory
+            {
+                ProcessRequestId = request.Id,
+                FromStepId = previousStepId,
+                ToStepId = targetStepId ?? previousStepId,
+                ActionId = action.Id,
+                ActorUserId = dto.UserId,
+                ActionTime = DateTime.UtcNow,
+                Comments = !string.IsNullOrWhiteSpace(dto.Comments) ? dto.Comments : $"Executed action: {action.Name}",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = dto.UserId.ToString()
+            };
+
+            _context.ProcessRequestHistories.Add(history);
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync(); // Commit transaction
+
+            _logger.LogInformation("Action executed successfully for Request {RequestId}", dto.RequestId);
         }
-
-        // 7. History
-        var history = new ProcessRequestHistory
+        catch (Exception)
         {
-            ProcessRequestId = request.Id,
-            FromStepId = previousStepId,
-            ToStepId = targetStepId ?? previousStepId,
-            ActionId = action.Id,
-            ActorUserId = dto.UserId,
-            ActionTime = DateTime.UtcNow,
-            Comments = !string.IsNullOrWhiteSpace(dto.Comments) ? dto.Comments : $"Executed action: {action.Name}",
-            CreatedAt = DateTime.UtcNow,
-            CreatedBy = dto.UserId.ToString()
-        };
-
-        _context.ProcessRequestHistories.Add(history);
-
-        await _context.SaveChangesAsync();
-        _logger.LogInformation("Action executed successfully for Request {RequestId}", dto.RequestId);
+            await transaction.RollbackAsync(); // Rollback on error
+            throw;
+        }
+        finally
+        {
+            semaphore.Release(); // Release lock
+            // We do not remove the semaphore here to avoid race conditions with checking/adding,
+            // though it causes memory growth over time. For this phase, it is acceptable or we can use a cache with expiry.
+        }
     }
 
     public async Task<List<ProcessRequest>> GetUserTasksAsync(Guid userId)
