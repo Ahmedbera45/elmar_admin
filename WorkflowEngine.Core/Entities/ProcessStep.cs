@@ -12,6 +12,9 @@ public class ProcessStep : BaseEntity
     public ProcessStepType StepType { get; set; }
     public int OrderIndex { get; set; }
     public int? DurationMinutes { get; set; }
+    public decimal? Cost { get; set; }
+    public double? PositionX { get; set; }
+    public double? PositionY { get; set; }
 
     public ProcessStepAssignmentType AssignmentType { get; set; }
     public string? AssignedTo { get; set; }

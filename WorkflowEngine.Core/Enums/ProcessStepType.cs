@@ -6,5 +6,7 @@ public enum ProcessStepType
     UserTask = 2,
     SystemTask = 3,
     Signing = 4,
+    Normal = 5,
+    Approval = 6,
     End = 99
 }

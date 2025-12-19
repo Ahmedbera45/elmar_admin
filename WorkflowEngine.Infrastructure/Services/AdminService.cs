@@ -47,6 +47,8 @@ public class AdminService : IAdminService
             Name = dto.Name,
             StepType = dto.StepType,
             OrderIndex = dto.OrderIndex,
+            AssignmentType = dto.AssignmentType,
+            AssignedTo = dto.AssignedTo,
             CreatedAt = DateTime.UtcNow
         };
         _context.ProcessSteps.Add(step);
@@ -62,9 +64,11 @@ public class AdminService : IAdminService
             ProcessStepId = dto.StepId,
             Name = dto.Name,
             ActionType = dto.ActionType,
-            TargetStepId = string.IsNullOrEmpty(dto.RuleExpression) ? dto.TargetStepId : null, // If rule exists, target is in condition
+            TargetStepId = string.IsNullOrEmpty(dto.RuleExpression) ? dto.TargetStepId : null,
+            IsCommentRequired = dto.IsCommentRequired,
             WebhookUrl = dto.WebhookUrl,
             WebhookMethod = dto.WebhookMethod,
+            RuleExpression = dto.RuleExpression,
             CreatedAt = DateTime.UtcNow
         };
         _context.ProcessActions.Add(action);
@@ -97,6 +101,7 @@ public class AdminService : IAdminService
             IsRequired = dto.IsRequired,
             Options = dto.Options,
             LookupSource = dto.LookupSource,
+            ExternalDatasetId = dto.ExternalDatasetId,
             CreatedAt = DateTime.UtcNow
         };
         _context.ProcessEntries.Add(entry);

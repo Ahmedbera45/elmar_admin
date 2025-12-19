@@ -15,6 +15,7 @@ public class ProcessAction : BaseEntity
     public int? TimeoutSeconds { get; set; }
     public Guid? TimeoutActionId { get; set; }
     public Guid? DefaultConditionId { get; set; }
+    public string? RuleExpression { get; set; }
     public string? WebhookUrl { get; set; }
     public string? WebhookMethod { get; set; }
 
