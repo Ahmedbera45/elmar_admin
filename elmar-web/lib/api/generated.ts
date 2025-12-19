@@ -50,3 +50,44 @@ export const postExecuteAction = async (data: any) => {
     const res = await AXIOS_INSTANCE.post('/api/workflow/execute', data);
     return res.data;
 }
+
+// Admin Mock Hooks
+export const useGetProcesses = () => {
+  return useQuery({
+    queryKey: ['admin-processes'],
+    queryFn: async () => {
+      const res = await AXIOS_INSTANCE.get('/api/admin/processes');
+      return res.data;
+    }
+  });
+};
+
+export const useGetProcessDefinition = (id: string) => {
+  return useQuery({
+    queryKey: ['admin-process-def', id],
+    queryFn: async () => {
+      const res = await AXIOS_INSTANCE.get(`/api/admin/process/${id}`);
+      return res.data;
+    }
+  });
+};
+
+export const postCreateProcess = async (data: any) => {
+    const res = await AXIOS_INSTANCE.post('/api/admin/process', data);
+    return res.data;
+}
+
+export const postAddStep = async (data: any) => {
+    const res = await AXIOS_INSTANCE.post('/api/admin/step', data);
+    return res.data;
+}
+
+export const postAddAction = async (data: any) => {
+    const res = await AXIOS_INSTANCE.post('/api/admin/action', data);
+    return res.data;
+}
+
+export const postAddField = async (data: any) => {
+    const res = await AXIOS_INSTANCE.post('/api/admin/field', data);
+    return res.data;
+}
