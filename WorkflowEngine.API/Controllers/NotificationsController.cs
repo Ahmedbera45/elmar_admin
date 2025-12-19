@@ -37,8 +37,8 @@ public class NotificationsController : ControllerBase
         }
         else
         {
-            existing.Subject = template.Subject;
-            existing.Body = template.Body;
+            existing.SubjectTemplate = template.SubjectTemplate;
+            existing.BodyTemplate = template.BodyTemplate;
             existing.Description = template.Description;
             existing.ModifiedAt = DateTime.UtcNow;
         }
