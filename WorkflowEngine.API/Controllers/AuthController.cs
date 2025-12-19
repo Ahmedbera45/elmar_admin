@@ -102,4 +102,29 @@ public class AuthController : ControllerBase
 
         return Ok(authResult);
     }
+
+    [Microsoft.AspNetCore.Authorization.Authorize]
+    [HttpPost("delegation")]
+    public async Task<IActionResult> UpdateDelegation([FromBody] DelegationDto dto)
+    {
+        var userIdClaim = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
+        if (userIdClaim == null) return Unauthorized();
+
+        var userId = Guid.Parse(userIdClaim.Value);
+
+        var user = await _context.WebUsers.FindAsync(userId);
+        if (user == null) return Unauthorized();
+
+        user.DelegateUserId = dto.DelegateUserId;
+        user.DelegateUntil = dto.DelegateUntil;
+
+        await _context.SaveChangesAsync();
+        return Ok();
+    }
+}
+
+public class DelegationDto
+{
+    public Guid? DelegateUserId { get; set; }
+    public DateTime? DelegateUntil { get; set; }
 }

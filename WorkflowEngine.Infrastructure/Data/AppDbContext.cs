@@ -329,65 +329,121 @@ public class AppDbContext : DbContext
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         UpdateAuditFields();
-        await AuditChanges();
-        return await base.SaveChangesAsync(cancellationToken);
+        var auditEntries = OnBeforeSaveChanges();
+        var result = await base.SaveChangesAsync(cancellationToken);
+        await OnAfterSaveChanges(auditEntries);
+        return result;
     }
 
-    private async Task AuditChanges()
+    private List<AuditEntry> OnBeforeSaveChanges()
     {
-        var entries = ChangeTracker.Entries()
-            .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified || e.State == EntityState.Deleted)
-            .ToList();
+        ChangeTracker.DetectChanges();
+        var auditEntries = new List<AuditEntry>();
 
-        foreach (var entry in entries)
+        foreach (var entry in ChangeTracker.Entries())
         {
-            if (entry.Entity is AuditLog) continue;
+            if (entry.Entity is AuditLog || entry.State == EntityState.Detached || entry.State == EntityState.Unchanged)
+                continue;
 
-            var audit = new AuditLog
-            {
-                Id = Guid.NewGuid(),
-                TableName = entry.Entity.GetType().Name,
-                Timestamp = DateTime.UtcNow,
-                Action = entry.State.ToString()
-            };
-
-            var oldValues = new Dictionary<string, object?>();
-            var newValues = new Dictionary<string, object?>();
+            var auditEntry = new AuditEntry(entry);
+            auditEntry.TableName = entry.Entity.GetType().Name;
+            auditEntries.Add(auditEntry);
 
             foreach (var property in entry.Properties)
             {
-                if (property.IsTemporary) continue;
-
-                string propName = property.Metadata.Name;
-
-                if (entry.State == EntityState.Added)
+                if (property.IsTemporary)
                 {
-                    newValues[propName] = property.CurrentValue;
+                    auditEntry.TemporaryProperties.Add(property);
+                    continue;
                 }
-                else if (entry.State == EntityState.Deleted)
+
+                string propertyName = property.Metadata.Name;
+                if (property.Metadata.IsPrimaryKey())
                 {
-                    oldValues[propName] = property.OriginalValue;
+                    auditEntry.KeyValues[propertyName] = property.CurrentValue;
+                    continue;
                 }
-                else if (entry.State == EntityState.Modified)
+
+                switch (entry.State)
                 {
-                    if (property.IsModified)
-                    {
-                        oldValues[propName] = property.OriginalValue;
-                        newValues[propName] = property.CurrentValue;
-                    }
+                    case EntityState.Added:
+                        auditEntry.AuditType = "Create";
+                        auditEntry.NewValues[propertyName] = property.CurrentValue;
+                        break;
+
+                    case EntityState.Deleted:
+                        auditEntry.AuditType = "Delete";
+                        auditEntry.OldValues[propertyName] = property.OriginalValue;
+                        break;
+
+                    case EntityState.Modified:
+                        if (property.IsModified)
+                        {
+                            auditEntry.AuditType = "Update";
+                            auditEntry.OldValues[propertyName] = property.OriginalValue;
+                            auditEntry.NewValues[propertyName] = property.CurrentValue;
+                        }
+                        break;
                 }
             }
+        }
+        return auditEntries;
+    }
 
-            audit.OldValues = oldValues.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(oldValues);
-            audit.NewValues = newValues.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(newValues);
+    private async Task OnAfterSaveChanges(List<AuditEntry> auditEntries)
+    {
+        if (auditEntries == null || auditEntries.Count == 0) return;
 
-            var idProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "Id");
-            if (idProp != null)
+        foreach (var auditEntry in auditEntries)
+        {
+            foreach (var prop in auditEntry.TemporaryProperties)
             {
-                 audit.RecordId = idProp.CurrentValue?.ToString() ?? "Pending";
+                if (prop.Metadata.IsPrimaryKey())
+                {
+                    auditEntry.KeyValues[prop.Metadata.Name] = prop.CurrentValue;
+                }
+                else
+                {
+                    auditEntry.NewValues[prop.Metadata.Name] = prop.CurrentValue;
+                }
             }
 
-            this.AuditLogs.Add(audit);
+            AuditLogs.Add(auditEntry.ToAuditLog());
+        }
+
+        await base.SaveChangesAsync();
+    }
+
+    public class AuditEntry
+    {
+        public AuditEntry(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry)
+        {
+            Entry = entry;
+        }
+
+        public Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry Entry { get; }
+        public string TableName { get; set; }
+        public string AuditType { get; set; }
+        public Dictionary<string, object?> KeyValues { get; } = new Dictionary<string, object?>();
+        public Dictionary<string, object?> OldValues { get; } = new Dictionary<string, object?>();
+        public Dictionary<string, object?> NewValues { get; } = new Dictionary<string, object?>();
+        public List<Microsoft.EntityFrameworkCore.ChangeTracking.PropertyEntry> TemporaryProperties { get; } = new List<Microsoft.EntityFrameworkCore.ChangeTracking.PropertyEntry>();
+
+        public AuditLog ToAuditLog()
+        {
+            var audit = new AuditLog();
+            audit.Id = Guid.NewGuid();
+            audit.TableName = TableName;
+            audit.Action = AuditType;
+            audit.Timestamp = DateTime.UtcNow;
+            // TODO: Get Current UserId from a service (IHttpContextAccessor) if possible, or leave null for System
+            // Since we are in DbContext, we'd need to inject a service to get the User.
+            // For now, we leave it null or "System".
+            audit.UserId = null;
+            audit.RecordId = KeyValues.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(KeyValues) : null;
+            audit.OldValues = OldValues.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(OldValues);
+            audit.NewValues = NewValues.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(NewValues);
+            return audit;
         }
     }
 

@@ -16,6 +16,10 @@ public class Process : BaseEntity
 
     public string? AllowedRoles { get; set; } // JSON array of roles e.g. ["Admin", "HR"]
 
+    public string? PrerequisiteProcessCode { get; set; }
+    public ProcessRequestStatus? PrerequisiteStatus { get; set; }
+    public string? PrerequisiteKeyMap { get; set; }
+
     // Navigation Properties
     public Process? ParentProcess { get; set; }
     public ICollection<ProcessStep> Steps { get; set; } = new List<ProcessStep>();
