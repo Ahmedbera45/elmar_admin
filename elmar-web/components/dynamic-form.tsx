@@ -20,6 +20,7 @@ export interface ProcessEntry {
   maxValue?: number;
   errorMessage?: string;
   lookupSource?: string;
+  externalDatasetId?: string;
 }
 
 interface DynamicFormProps {

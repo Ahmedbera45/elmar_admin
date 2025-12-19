@@ -6,8 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { postAddField } from '@/lib/api/generated';
+import { postAddField, useGetDatasets } from '@/lib/api/generated';
 import { useToast } from '@/components/ui/toast-context';
+import { useQuery } from '@tanstack/react-query';
+import { customInstance } from '@/lib/api/custom-instance';
 
 interface ProcessFieldModalProps {
   isOpen: boolean;
