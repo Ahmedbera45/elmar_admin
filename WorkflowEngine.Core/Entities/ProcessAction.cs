@@ -18,6 +18,15 @@ public class ProcessAction : BaseEntity
     public string? WebhookUrl { get; set; }
     public string? WebhookMethod { get; set; }
 
+    // Fintech & Legal
+    public bool IsPaymentRequired { get; set; }
+    public decimal? PaymentAmount { get; set; }
+    public string? PaymentAmountField { get; set; }
+
+    public bool IsDebtRequired { get; set; }
+    public string? DebtCode { get; set; }
+    public string? DebtAmountField { get; set; }
+
     /// <summary>
     /// The step to transition to when this action is executed.
     /// If null, it might keep the process in the same step.

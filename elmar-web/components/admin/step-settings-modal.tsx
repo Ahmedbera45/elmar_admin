@@ -101,6 +101,16 @@ export function StepSettingsModal({ isOpen, onClose, step, onSuccess }: StepSett
             </div>
         )}
 
+        {/* Phase 13: Signing Step Config */}
+        <div>
+             <Label>Signature Document Template</Label>
+             <Input
+                placeholder="Template GUID (e.g. from Templates page)"
+                onChange={(e) => { /* TODO: Bind to signatureDocumentTemplateId */ }}
+             />
+             <p className="text-xs text-gray-500">Required if Step Type is 'Signing'</p>
+        </div>
+
         <Button onClick={handleSubmit} className="w-full">Save Settings</Button>
       </div>
     </Dialog>

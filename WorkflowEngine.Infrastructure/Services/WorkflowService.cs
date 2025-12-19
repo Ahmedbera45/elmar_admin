@@ -28,10 +28,14 @@ public class WorkflowService : IWorkflowService
     private readonly INotificationService _notificationService;
     private readonly IMemoryCache _cache;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ISignatureProvider _signatureProvider;
+    private readonly IPaymentProvider _paymentProvider;
+    private readonly IDebtProvider _debtProvider;
 
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
-    public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger, INotificationService notificationService, IMemoryCache cache, IHttpClientFactory httpClientFactory)
+    public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger, INotificationService notificationService, IMemoryCache cache, IHttpClientFactory httpClientFactory,
+        ISignatureProvider signatureProvider, IPaymentProvider paymentProvider, IDebtProvider debtProvider)
     {
         _context = context;
         _logger = logger;
@@ -39,6 +43,9 @@ public class WorkflowService : IWorkflowService
         _notificationService = notificationService;
         _cache = cache;
         _httpClientFactory = httpClientFactory;
+        _signatureProvider = signatureProvider;
+        _paymentProvider = paymentProvider;
+        _debtProvider = debtProvider;
     }
 
     private async Task<Process?> GetCachedProcessAsync(string processCode)
