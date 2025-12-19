@@ -7,5 +7,6 @@ public enum ProcessEntryType
     Date = 3,
     Select = 4,
     File = 5,
-    Checkbox = 6
+    Checkbox = 6,
+    UserSelect = 7
 }

@@ -43,6 +43,8 @@ public class AppDbContext : DbContext
     public DbSet<ProcessDocumentTemplate> ProcessDocumentTemplates { get; set; }
     public DbSet<NotificationTemplate> NotificationTemplates { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
+    public DbSet<AppRole> AppRoles { get; set; }
+    public DbSet<SystemSetting> SystemSettings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -291,10 +293,22 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<NotificationTemplate>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasOne(e => e.ProcessAction)
-                  .WithMany()
-                  .HasForeignKey(e => e.ProcessActionId)
-                  .OnDelete(DeleteBehavior.Cascade);
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(100);
+            entity.HasIndex(e => e.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<SystemSetting>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(100);
+            entity.HasIndex(e => e.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<AppRole>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.HasIndex(e => e.Name).IsUnique();
         });
 
         modelBuilder.Entity<AuditLog>(entity =>

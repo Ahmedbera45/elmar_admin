@@ -11,6 +11,7 @@ public interface IAdminService
     Task<Guid> AddStepAsync(CreateStepDto dto);
     Task<Guid> AddActionAsync(CreateActionDto dto);
     Task<Guid> AddFieldAsync(CreateFieldDto dto);
+    Task UpdateStepAsync(UpdateStepDto dto);
     Task<ProcessDefinitionDto?> GetProcessDefinitionAsync(Guid processId);
     Task<List<ProcessDefinitionDto>> GetAllProcessesAsync();
 }

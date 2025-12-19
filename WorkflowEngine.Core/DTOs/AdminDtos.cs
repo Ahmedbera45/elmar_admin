@@ -34,6 +34,14 @@ public class CreateFieldDto
     public ProcessEntryType EntryType { get; set; }
     public bool IsRequired { get; set; }
     public string? Options { get; set; }
+    public string? LookupSource { get; set; }
+}
+
+public class UpdateStepDto
+{
+    public Guid StepId { get; set; }
+    public ProcessStepAssignmentType AssignmentType { get; set; }
+    public string? AssignedTo { get; set; }
 }
 
 public class ProcessDefinitionDto
@@ -49,6 +57,8 @@ public class StepDefinitionDto
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public ProcessStepType StepType { get; set; }
+    public ProcessStepAssignmentType AssignmentType { get; set; }
+    public string? AssignedTo { get; set; }
     public List<ActionDefinitionDto> Actions { get; set; } = new List<ActionDefinitionDto>();
     public List<FieldDefinitionDto> Fields { get; set; } = new List<FieldDefinitionDto>();
 }
@@ -68,4 +78,12 @@ public class FieldDefinitionDto
     public string Title { get; set; } = string.Empty;
     public ProcessEntryType EntryType { get; set; }
     public bool IsRequired { get; set; }
+}
+
+public class WebUserDto
+{
+    public Guid Id { get; set; }
+    public string Username { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
 }

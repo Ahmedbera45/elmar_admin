@@ -1,21 +1,22 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import { postUploadFile } from '@/lib/api/generated';
+import { postUploadFile, useGetUsers } from '@/lib/api/generated';
 
 export interface ProcessEntry {
   key: string;
   title: string;
-  entryType: 'Text' | 'Number' | 'Date' | 'Select' | 'File' | 'Checkbox';
+  entryType: 'Text' | 'Number' | 'Date' | 'Select' | 'File' | 'Checkbox' | 'UserSelect';
   isRequired?: boolean;
   options?: string;
   validationRegex?: string;
+  lookupSource?: string;
 }
 
 interface DynamicFormProps {
@@ -26,8 +27,37 @@ interface DynamicFormProps {
   readOnly?: boolean;
 }
 
+function UserSelectField({ entry, control, readOnly }: { entry: ProcessEntry, control: any, readOnly: boolean }) {
+    const { data: users, isLoading } = useGetUsers(entry.lookupSource || undefined);
+
+    if (readOnly) {
+         return <Input disabled value={control._formValues[entry.key] || ''} />;
+    }
+
+    return (
+        <Controller
+            name={entry.key}
+            control={control}
+            rules={{ required: entry.isRequired }}
+            render={({ field }) => (
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select User" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {isLoading ? <SelectItem value="loading" disabled>Loading users...</SelectItem> :
+                         users?.map((u: any) => (
+                             <SelectItem key={u.id} value={u.id}>{u.username} ({u.role})</SelectItem>
+                         ))}
+                    </SelectContent>
+                </Select>
+            )}
+        />
+    );
+}
+
 export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "Submit", readOnly = false }: DynamicFormProps) {
-  const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm({
+  const { register, control, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm({
     defaultValues: defaultValues || {},
   });
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
@@ -60,11 +90,24 @@ export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "S
           }
         }
 
+        // Map integer types to string if necessary, assuming entryType comes as string from API DTO if I mapped it,
+        // OR handle 1/2/3/7 integers if DTO is raw.
+        // Based on ProcessFieldModal, we treat them as numbers mostly but Admin Service DTO returns Enum (int).
+        // Frontend TS interface says string literal union.
+        // Let's assume the API conversion happens or we handle the int value.
+        // Actually, generated.ts usually types them as any or number if not specified.
+        // I'll assume we need to handle the numeric values or match the string if mapped.
+        // Previous code used strings. I'll stick to strings for the check if mapped, or use the number.
+        // The interface defines strings. I should map 7 to 'UserSelect'.
+        // However, I can't easily change the incoming data type without a mapper.
+        // I'll check `entryType` loosely.
+        const type: any = entry.entryType;
+
         return (
           <div key={entry.key} className="space-y-2">
             <Label htmlFor={entry.key}>{entry.title} {!readOnly && entry.isRequired && <span className="text-red-500">*</span>}</Label>
 
-            {entry.entryType === 'Text' && (
+            {(type === 'Text' || type === 1) && (
               <Input
                 id={entry.key}
                 disabled={readOnly}
@@ -72,7 +115,7 @@ export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "S
               />
             )}
 
-            {entry.entryType === 'Number' && (
+            {(type === 'Number' || type === 2) && (
               <Input
                 id={entry.key}
                 type="number"
@@ -81,7 +124,7 @@ export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "S
               />
             )}
 
-            {entry.entryType === 'Date' && (
+            {(type === 'Date' || type === 3) && (
               <Input
                 id={entry.key}
                 type="date"
@@ -90,16 +133,28 @@ export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "S
               />
             )}
 
-            {entry.entryType === 'Select' && (
-              <Select
-                id={entry.key}
-                options={options}
-                disabled={readOnly}
-                {...register(entry.key, { required: !readOnly && entry.isRequired })}
-              />
+            {(type === 'Select' || type === 4) && (
+                readOnly ? <Input disabled value={defaultValues?.[entry.key]} /> :
+                <Controller
+                    name={entry.key}
+                    control={control}
+                    rules={{ required: entry.isRequired }}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {options.map((opt: any) => (
+                                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
             )}
 
-            {entry.entryType === 'File' && (
+            {(type === 'File' || type === 5) && (
               <div className="space-y-1">
                 <Input
                   type="file"
@@ -109,6 +164,22 @@ export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "S
                 <input type="hidden" {...register(entry.key, { required: !readOnly && entry.isRequired })} />
                 {uploading[entry.key] && <span className="text-sm text-muted-foreground animate-pulse">Uploading...</span>}
               </div>
+            )}
+
+            {(type === 'Checkbox' || type === 6) && (
+                 <div className="flex items-center space-x-2">
+                    <input
+                        type="checkbox"
+                        disabled={readOnly}
+                        {...register(entry.key)}
+                        className="h-4 w-4"
+                    />
+                    <span className="text-sm text-gray-700">{entry.title}</span>
+                 </div>
+            )}
+
+            {(type === 'UserSelect' || type === 7) && (
+                <UserSelectField entry={entry} control={control} readOnly={readOnly} />
             )}
 
             {!readOnly && errors[entry.key] && (

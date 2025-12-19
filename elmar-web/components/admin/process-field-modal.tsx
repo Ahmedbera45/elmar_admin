@@ -20,8 +20,9 @@ export function ProcessFieldModal({ isOpen, onClose, stepId, onSuccess }: Proces
   const [formData, setFormData] = useState({
     title: '',
     key: '',
-    entryType: 0,
-    isRequired: false
+    entryType: 1, // Default to Text (1)
+    isRequired: false,
+    lookupSource: ''
   });
   const { toast } = useToast();
 
@@ -33,6 +34,7 @@ export function ProcessFieldModal({ isOpen, onClose, stepId, onSuccess }: Proces
         title: formData.title,
         entryType: Number(formData.entryType),
         isRequired: formData.isRequired,
+        lookupSource: Number(formData.entryType) === 7 ? formData.lookupSource : null,
         options: null
       });
       toast("Field added successfully");
@@ -44,12 +46,13 @@ export function ProcessFieldModal({ isOpen, onClose, stepId, onSuccess }: Proces
   };
 
   const entryTypes = [
-    { label: 'Text', value: '0' },
-    { label: 'Number', value: '1' },
-    { label: 'Date', value: '2' },
-    { label: 'Select', value: '3' },
-    { label: 'File', value: '4' },
-    { label: 'Checkbox', value: '5' }
+    { label: 'Text', value: '1' },
+    { label: 'Number', value: '2' },
+    { label: 'Date', value: '3' },
+    { label: 'Select', value: '4' },
+    { label: 'File', value: '5' },
+    { label: 'Checkbox', value: '6' },
+    { label: 'User Select', value: '7' }
   ];
 
   return (
@@ -79,6 +82,19 @@ export function ProcessFieldModal({ isOpen, onClose, stepId, onSuccess }: Proces
             options={entryTypes}
           />
         </div>
+
+        {Number(formData.entryType) === 7 && (
+            <div>
+                <Label>Lookup Role (Optional)</Label>
+                <Input
+                    value={formData.lookupSource}
+                    onChange={e => setFormData({...formData, lookupSource: e.target.value})}
+                    placeholder="e.g. Engineer"
+                />
+                <p className="text-xs text-gray-500 mt-1">If specified, only users with this role will be listed.</p>
+            </div>
+        )}
+
         <div className="flex items-center space-x-2">
           <input
             type="checkbox"
