@@ -20,7 +20,7 @@ public class LocalDiskStorageService : IStorageService
         _rootPath = Path.Combine(Directory.GetCurrentDirectory(), "App_Data");
     }
 
-    public async Task<string> UploadAsync(Stream fileStream, string fileName)
+    public async Task<Guid> UploadAsync(Stream fileStream, string fileName)
     {
         var now = DateTime.UtcNow;
         var folderPath = Path.Combine(_rootPath, "Uploads", now.Year.ToString(), now.Month.ToString("00"));
@@ -39,23 +39,23 @@ public class LocalDiskStorageService : IStorageService
             await fileStream.CopyToAsync(fs);
         }
 
-        // Save Metadata
         var relativePath = Path.Combine(now.Year.ToString(), now.Month.ToString("00"), storedFileName);
 
         var metadata = new FileMetadata
         {
-            StoredFileName = relativePath, // Storing relative path as the unique identifier/locator
+            Id = Guid.NewGuid(),
+            StoredFileName = relativePath,
             OriginalFileName = fileName,
-            ContentType = "application/octet-stream", // Simplified, or pass content type in args
+            ContentType = "application/octet-stream",
             Size = fileStream.Length,
             CreatedAt = DateTime.UtcNow,
-            CreatedBy = "System" // Or inject User context
+            CreatedBy = "System"
         };
 
         _context.FileMetadatas.Add(metadata);
         await _context.SaveChangesAsync();
 
-        return relativePath;
+        return metadata.Id;
     }
 
     public async Task<(Stream FileStream, string ContentType, string OriginalFileName)> DownloadAsync(string filePath)

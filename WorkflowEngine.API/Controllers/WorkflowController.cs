@@ -118,8 +118,8 @@ public class WorkflowController : ControllerBase
         try
         {
             using var stream = file.OpenReadStream();
-            var path = await _storageService.UploadAsync(stream, file.FileName);
-            return Ok(new { FilePath = path });
+            var fileId = await _storageService.UploadAsync(stream, file.FileName);
+            return Ok(new { FileId = fileId });
         }
         catch (Exception ex)
         {

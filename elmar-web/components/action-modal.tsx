@@ -4,26 +4,33 @@ import { Dialog } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 
 interface ActionModalProps {
   isOpen: boolean;
   onClose: () => void;
   action: { id: string; name: string; actionType: any; isCommentRequired: boolean } | null;
-  onSubmit: (actionId: string, comments: string) => void;
+  onSubmit: (actionId: string, comments: string) => Promise<void>;
 }
 
 export function ActionModal({ isOpen, onClose, action, onSubmit }: ActionModalProps) {
   const [comments, setComments] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (action?.isCommentRequired && !comments.trim()) {
       alert('Comment is required');
       return;
     }
     if (action) {
-      onSubmit(action.id, comments);
-      setComments('');
-      onClose();
+      setLoading(true);
+      try {
+        await onSubmit(action.id, comments);
+        setComments('');
+        onClose();
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -42,11 +49,13 @@ export function ActionModal({ isOpen, onClose, action, onSubmit }: ActionModalPr
           />
         </div>
         <div className="flex justify-end space-x-2">
-          <Button onClick={onClose} className="bg-gray-500 hover:bg-gray-600">Cancel</Button>
+          <Button onClick={onClose} disabled={loading} className="bg-gray-500 hover:bg-gray-600">Cancel</Button>
           <Button
             onClick={handleSubmit}
+            disabled={loading}
             className={action.name.toLowerCase().includes('reject') ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}
           >
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Confirm
           </Button>
         </div>

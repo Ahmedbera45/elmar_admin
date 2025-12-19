@@ -11,6 +11,15 @@ export const useGetProcessViewDefinition = (code: string) => {
   });
 };
 
+export const postUploadFile = async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await AXIOS_INSTANCE.post('/api/files/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return res.data;
+}
+
 export const useGetProcessRequests = (code: string) => {
   return useQuery({
     queryKey: ['process-requests', code],

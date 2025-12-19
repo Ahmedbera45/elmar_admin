@@ -1,11 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
+import { postUploadFile } from '@/lib/api/generated';
 
 export interface ProcessEntry {
   key: string;
@@ -25,9 +27,26 @@ interface DynamicFormProps {
 }
 
 export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "Submit", readOnly = false }: DynamicFormProps) {
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm({
     defaultValues: defaultValues || {},
   });
+  const [uploading, setUploading] = useState<Record<string, boolean>>({});
+
+  const handleFileChange = async (key: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await postUploadFile(file);
+      setValue(key, res.fileId);
+    } catch (err) {
+      console.error(err);
+      alert("Upload failed");
+    } finally {
+      setUploading(prev => ({ ...prev, [key]: false }));
+    }
+  };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -80,6 +99,18 @@ export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "S
               />
             )}
 
+            {entry.entryType === 'File' && (
+              <div className="space-y-1">
+                <Input
+                  type="file"
+                  disabled={readOnly || uploading[entry.key]}
+                  onChange={(e) => handleFileChange(entry.key, e)}
+                />
+                <input type="hidden" {...register(entry.key, { required: !readOnly && entry.isRequired })} />
+                {uploading[entry.key] && <span className="text-sm text-muted-foreground animate-pulse">Uploading...</span>}
+              </div>
+            )}
+
             {!readOnly && errors[entry.key] && (
               <span className="text-sm text-red-500">This field is required</span>
             )}
@@ -87,7 +118,12 @@ export function DynamicForm({ entries, defaultValues, onSubmit, submitLabel = "S
         );
       })}
 
-      {!readOnly && <Button type="submit">{submitLabel}</Button>}
+      {!readOnly && (
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {submitLabel}
+        </Button>
+      )}
     </form>
   );
 }

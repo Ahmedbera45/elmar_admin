@@ -311,6 +311,7 @@ public class WorkflowService : IWorkflowService
                             break;
                         case ProcessEntryType.Checkbox:
                             if (bool.TryParse(val.ToString(), out bool bVal)) entryValue.BoolValue = bVal;
+                            else if (val.ToString().Equals("true", StringComparison.OrdinalIgnoreCase)) entryValue.BoolValue = true;
                             break;
                     }
 
@@ -372,11 +373,17 @@ public class WorkflowService : IWorkflowService
 
             _context.ProcessRequestHistories.Add(history);
 
-            // Phase 9: Notification Logic
+            // Phase 9: Notification Logic (Prepare data, but send after commit)
             var notifications = await _context.NotificationTemplates
                 .Where(n => n.ProcessActionId == action.Id)
                 .ToListAsync();
 
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            _logger.LogInformation("Action executed successfully for Request {RequestId}", dto.RequestId);
+
+            // Send Notifications (Post-Commit)
             if (notifications.Any())
             {
                 var notificationData = new Dictionary<string, object?>(dto.FormValues);
@@ -391,11 +398,6 @@ public class WorkflowService : IWorkflowService
                     await _notificationService.SendNotificationAsync(request.InitiatorUserId, $"{subject} - {body}");
                 }
             }
-
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            _logger.LogInformation("Action executed successfully for Request {RequestId}", dto.RequestId);
 
             // Phase 6: Real-time update
             await _notificationService.SendUpdateToAllAsync();
