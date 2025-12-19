@@ -16,6 +16,9 @@ export interface ProcessEntry {
   isRequired?: boolean;
   options?: string;
   validationRegex?: string;
+  minValue?: number;
+  maxValue?: number;
+  errorMessage?: string;
   lookupSource?: string;
 }
 

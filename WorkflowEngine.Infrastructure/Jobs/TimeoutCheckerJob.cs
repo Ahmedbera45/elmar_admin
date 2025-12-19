@@ -45,39 +45,64 @@ public class TimeoutCheckerJob
 
         foreach (var request in activeRequests)
         {
-            var timeoutAction = request.CurrentStep.Actions
-                .FirstOrDefault(a => a.TimeoutSeconds.HasValue && a.TimeoutSeconds.Value > 0);
+            // Phase 11: Updated Timeout Logic (ProcessStep based)
 
-            if (timeoutAction != null)
+            bool isTimedOut = false;
+            Guid? actionToExecute = null;
+
+            // 1. Check Step Level Timeout
+            if (request.CurrentStep.TimeoutHours.HasValue && request.CurrentStep.TimeoutHours.Value > 0)
             {
-                var timeoutSeconds = timeoutAction.TimeoutSeconds.GetValueOrDefault();
-                var lastActivity = request.ModifiedAt ?? request.CreatedAt;
-                var timeoutTime = lastActivity.AddSeconds(timeoutSeconds);
+                var stepStartTime = request.ModifiedAt ?? request.CreatedAt;
+                var timeoutTime = stepStartTime.AddHours(request.CurrentStep.TimeoutHours.Value);
 
                 if (DateTime.UtcNow > timeoutTime)
                 {
-                    _logger.LogWarning("Request {RequestNumber} timed out on step {StepName}", request.RequestNumber, request.CurrentStep.Name);
+                    isTimedOut = true;
+                    actionToExecute = request.CurrentStep.TimeoutActionId;
+                    _logger.LogWarning("Request {RequestNumber} timed out on step {StepName} (Step Timeout)", request.RequestNumber, request.CurrentStep.Name);
+                }
+            }
 
-                    if (timeoutAction.TimeoutActionId.HasValue)
+            // 2. Check Action Level Timeout
+            if (!isTimedOut)
+            {
+                var timeoutAction = request.CurrentStep.Actions
+                    .FirstOrDefault(a => a.TimeoutSeconds.HasValue && a.TimeoutSeconds.Value > 0);
+
+                if (timeoutAction != null)
+                {
+                    var timeoutSeconds = timeoutAction.TimeoutSeconds.GetValueOrDefault();
+                    var lastActivity = request.ModifiedAt ?? request.CreatedAt;
+                    var timeoutTime = lastActivity.AddSeconds(timeoutSeconds);
+
+                    if (DateTime.UtcNow > timeoutTime)
                     {
-                         try
-                         {
-                             await _workflowService.ExecuteActionAsync(new ExecuteActionDto
-                             {
-                                 RequestId = request.Id,
-                                 ActionId = timeoutAction.TimeoutActionId.Value,
-                                 UserId = systemUser.Id,
-                                 Comments = "System: Auto-executed due to timeout."
-                             });
-
-                             _logger.LogInformation("Executed timeout action for Request {RequestNumber}", request.RequestNumber);
-                         }
-                         catch (Exception ex)
-                         {
-                             _logger.LogError(ex, "Failed to execute timeout action for Request {RequestNumber}", request.RequestNumber);
-                         }
+                        isTimedOut = true;
+                        actionToExecute = timeoutAction.TimeoutActionId;
+                        _logger.LogWarning("Request {RequestNumber} timed out on step {StepName} (Action Timeout)", request.RequestNumber, request.CurrentStep.Name);
                     }
                 }
+            }
+
+            if (isTimedOut && actionToExecute.HasValue)
+            {
+                 try
+                 {
+                     await _workflowService.ExecuteActionAsync(new ExecuteActionDto
+                     {
+                         RequestId = request.Id,
+                         ActionId = actionToExecute.Value,
+                         UserId = systemUser.Id,
+                         Comments = "System: Auto-executed due to timeout."
+                     });
+
+                     _logger.LogInformation("Executed timeout action for Request {RequestNumber}", request.RequestNumber);
+                 }
+                 catch (Exception ex)
+                 {
+                     _logger.LogError(ex, "Failed to execute timeout action for Request {RequestNumber}", request.RequestNumber);
+                 }
             }
         }
 
