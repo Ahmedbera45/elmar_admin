@@ -28,14 +28,24 @@ public class WorkflowService : IWorkflowService
     private readonly INotificationService _notificationService;
     private readonly IMemoryCache _cache;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ISignatureProvider _signatureProvider;
+
+    // YENİ EKLENEN SERVİSLER
     private readonly IPaymentProvider _paymentProvider;
     private readonly IDebtProvider _debtProvider;
+    private readonly ISignatureProvider _signatureProvider;
 
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
-    public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger, INotificationService notificationService, IMemoryCache cache, IHttpClientFactory httpClientFactory,
-        ISignatureProvider signatureProvider, IPaymentProvider paymentProvider, IDebtProvider debtProvider)
+    // CONSTRUCTOR GÜNCELLENDİ
+    public WorkflowService(
+        AppDbContext context,
+        ILogger<WorkflowService> logger,
+        INotificationService notificationService,
+        IMemoryCache cache,
+        IHttpClientFactory httpClientFactory,
+        IPaymentProvider paymentProvider,
+        IDebtProvider debtProvider,
+        ISignatureProvider signatureProvider)
     {
         _context = context;
         _logger = logger;
@@ -43,9 +53,9 @@ public class WorkflowService : IWorkflowService
         _notificationService = notificationService;
         _cache = cache;
         _httpClientFactory = httpClientFactory;
-        _signatureProvider = signatureProvider;
         _paymentProvider = paymentProvider;
         _debtProvider = debtProvider;
+        _signatureProvider = signatureProvider;
     }
 
     private async Task<Process?> GetCachedProcessAsync(string processCode)
@@ -554,22 +564,23 @@ public class WorkflowService : IWorkflowService
         var user = await _context.WebUsers.FindAsync(userId);
         if (user == null) return new List<ProcessRequest>();
 
+        // Check for delegates
+        // Users who have delegated TO this user
+        var delegators = await _context.WebUsers
+            .Where(u => u.DelegateUserId == userId && u.DelegateUntil > DateTime.UtcNow)
+            .Select(u => u.Id)
+            .ToListAsync();
+
+        var targetUserIds = new List<Guid> { userId };
+        targetUserIds.AddRange(delegators);
+
         return await _context.ProcessRequests
             .Include(e => e.Process)
             .Include(e => e.CurrentStep)
             .Where(e => e.Status == ProcessRequestStatus.Active)
             .Where(e =>
-                (e.AssignedUserId == userId) ||
+                (e.AssignedUserId.HasValue && targetUserIds.Contains(e.AssignedUserId.Value)) ||
                 (e.AssignedUserId == null && e.CurrentStep.AssignmentType == ProcessStepAssignmentType.RoleBased && e.CurrentStep.AssignedTo == user.Role)
-                // Fallback: If no assignment type set (legacy), maybe allow all? Or restrict?
-                // For now, assuming legacy steps (0) are open or need update.
-                // If AssignmentType is 0 (default), it's not RoleBased(1).
-                // Let's assume default/legacy behavior is "Anyone with permission" or "No one"?
-                // Existing system didn't have AssignmentType.
-                // If I want to support legacy "Show to all", I might need to handle AssignmentType == 0 case.
-                // Assuming AssignmentType default is 0. If enum starts at 1, default is 0.
-                // If 0, maybe show to all? Or just Initiator?
-                // Let's rely on explicit assignment for Phase 9.
             )
             .ToListAsync();
     }
