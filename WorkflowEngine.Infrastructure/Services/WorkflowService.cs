@@ -396,6 +396,9 @@ public class WorkflowService : IWorkflowService
             await transaction.CommitAsync();
 
             _logger.LogInformation("Action executed successfully for Request {RequestId}", dto.RequestId);
+
+            // Phase 6: Real-time update
+            await _notificationService.SendUpdateToAllAsync();
         }
         catch (Exception)
         {
