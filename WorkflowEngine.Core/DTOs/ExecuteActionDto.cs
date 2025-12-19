@@ -11,4 +11,8 @@ public class ExecuteActionDto
     public Guid UserId { get; set; }
     public string? Comments { get; set; }
     public Dictionary<string, object> FormValues { get; set; } = new();
+
+    // Phase 13 Fields
+    public string? PaymentTransactionId { get; set; }
+    public string? SignedFileId { get; set; }
 }

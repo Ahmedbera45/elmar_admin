@@ -66,8 +66,9 @@ export function ProcessActionModal({ isOpen, onClose, stepId, steps, allFields, 
   return (
     <Dialog isOpen={isOpen} onClose={onClose} title="Add Action">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="fintech">Fintech & Legal</TabsTrigger>
           <TabsTrigger value="advanced">Advanced</TabsTrigger>
         </TabsList>
         <div className="mt-4">
