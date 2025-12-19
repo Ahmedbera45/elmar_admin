@@ -73,6 +73,32 @@ export const postSaveNotificationTemplate = async (template: any) => {
     return res.data;
 };
 
+export const useGetTemplates = () => {
+    return useQuery({
+        queryKey: ['admin-templates'],
+        queryFn: async () => {
+            const res = await AXIOS_INSTANCE.get('/api/admin/templates');
+            return res.data;
+        }
+    });
+};
+
+export const useGetTemplate = (id: string) => {
+    return useQuery({
+        queryKey: ['admin-template', id],
+        enabled: !!id,
+        queryFn: async () => {
+            const res = await AXIOS_INSTANCE.get(`/api/admin/templates/${id}`);
+            return res.data;
+        }
+    });
+};
+
+export const postSaveTemplate = async (template: any) => {
+    const res = await AXIOS_INSTANCE.post('/api/admin/templates', template);
+    return res.data;
+};
+
 export const postUploadFile = async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);

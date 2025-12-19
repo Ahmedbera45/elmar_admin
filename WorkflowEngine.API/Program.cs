@@ -63,6 +63,7 @@ builder.Services.AddSwaggerGen(options =>
 });
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
+builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
 builder.Services.AddCors(options =>
 {
@@ -195,8 +196,8 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var context = services.GetRequiredService<AppDbContext>();
-        // Automatically apply migrations (Optional, but good for dev)
-        // context.Database.Migrate();
+        // Automatically apply migrations
+        context.Database.Migrate();
         DbInitializer.Initialize(context);
 
         // Schedule Recurring Jobs
