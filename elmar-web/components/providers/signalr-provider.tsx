@@ -1,12 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, createContext } from 'react';
 import { HubConnection, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { useToast } from '@/components/ui/toast-context';
 import { useQueryClient } from '@tanstack/react-query';
 
+export const SignalRContext = createContext<{ notifications: string[] }>({ notifications: [] });
+
 export function SignalRProvider({ children }: { children: React.ReactNode }) {
   const [connection, setConnection] = useState<HubConnection | null>(null);
+  const [notifications, setNotifications] = useState<string[]>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -32,6 +35,7 @@ export function SignalRProvider({ children }: { children: React.ReactNode }) {
 
       connection.on('ReceiveNotification', (message: string) => {
         toast(message, 'success');
+        setNotifications(prev => [message, ...prev].slice(0, 10));
       });
 
       connection.on('ReceiveUpdate', () => {
@@ -47,5 +51,9 @@ export function SignalRProvider({ children }: { children: React.ReactNode }) {
     }
   }, [connection, toast, queryClient]);
 
-  return <>{children}</>;
+  return (
+    <SignalRContext.Provider value={{ notifications }}>
+      {children}
+    </SignalRContext.Provider>
+  );
 }
