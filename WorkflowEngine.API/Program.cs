@@ -111,13 +111,13 @@ builder.Services.AddScoped<IStorageService, LocalDiskStorageService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 
-// FAZ 11 & 12 & 13 SERVİSLERİ
+// --- YENİ EKLENENLER (FAZ 12 & 13) ---
 builder.Services.AddScoped<WorkflowEngine.Infrastructure.Services.ProcessImportExportService>();
 builder.Services.AddScoped<WorkflowEngine.Infrastructure.Services.ProcessVersioningService>();
 builder.Services.AddScoped<IExternalDataService, ExternalDataService>();
-builder.Services.AddScoped<ISignatureProvider, MockSignatureProvider>();
 builder.Services.AddScoped<IPaymentProvider, MockPaymentProvider>();
 builder.Services.AddScoped<IDebtProvider, MockDebtProvider>();
+builder.Services.AddScoped<ISignatureProvider, MockSignatureProvider>();
 
 // JOBS
 builder.Services.AddScoped<TimeoutCheckerJob>();

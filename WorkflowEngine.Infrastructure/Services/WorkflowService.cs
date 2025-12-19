@@ -36,16 +36,16 @@ public class WorkflowService : IWorkflowService
 
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
-    // CONSTRUCTOR GÜNCELLENDİ
+    // Constructor
     public WorkflowService(
         AppDbContext context,
         ILogger<WorkflowService> logger,
         INotificationService notificationService,
         IMemoryCache cache,
         IHttpClientFactory httpClientFactory,
-        IPaymentProvider paymentProvider,
-        IDebtProvider debtProvider,
-        ISignatureProvider signatureProvider)
+        IPaymentProvider paymentProvider, // EKLENDİ
+        IDebtProvider debtProvider,       // EKLENDİ
+        ISignatureProvider signatureProvider) // EKLENDİ
     {
         _context = context;
         _logger = logger;
@@ -53,6 +53,7 @@ public class WorkflowService : IWorkflowService
         _notificationService = notificationService;
         _cache = cache;
         _httpClientFactory = httpClientFactory;
+        // Mock providers assignment
         _paymentProvider = paymentProvider;
         _debtProvider = debtProvider;
         _signatureProvider = signatureProvider;
