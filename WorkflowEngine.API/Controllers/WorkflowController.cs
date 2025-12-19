@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using WorkflowEngine.Core.DTOs;
 using WorkflowEngine.Core.Interfaces;
+using WorkflowEngine.Core.Enums;
 
 namespace WorkflowEngine.API.Controllers;
 
@@ -167,14 +168,25 @@ public class WorkflowController : ControllerBase
     /// Retrieves requests for a process with dynamic column data.
     /// </summary>
     /// <param name="processCode">The process code.</param>
+    /// <param name="status">Optional status filter.</param>
+    /// <param name="startDate">Optional start date filter.</param>
+    /// <param name="endDate">Optional end date filter.</param>
     /// <returns>List of requests with dynamic values.</returns>
     [HttpGet("process/{processCode}/requests")]
-    public async Task<IActionResult> GetProcessRequests(string processCode)
+    public async Task<IActionResult> GetProcessRequests(string processCode, [FromQuery] ProcessRequestStatus? status, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
     {
         // Add permission check here if needed (e.g. only users who can see this process)
         // For now relying on [Authorize]
 
-        var requests = await _workflowService.GetProcessRequestsAsync(processCode);
+        var filter = new ProcessRequestFilterDto
+        {
+            ProcessCode = processCode,
+            Status = status,
+            StartDate = startDate,
+            EndDate = endDate
+        };
+
+        var requests = await _workflowService.GetProcessRequestsAsync(filter);
         return Ok(requests);
     }
 
