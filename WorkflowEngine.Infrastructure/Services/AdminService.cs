@@ -62,10 +62,26 @@ public class AdminService : IAdminService
             ProcessStepId = dto.StepId,
             Name = dto.Name,
             ActionType = dto.ActionType,
-            TargetStepId = dto.TargetStepId,
+            TargetStepId = string.IsNullOrEmpty(dto.RuleExpression) ? dto.TargetStepId : null, // If rule exists, target is in condition
+            WebhookUrl = dto.WebhookUrl,
+            WebhookMethod = dto.WebhookMethod,
             CreatedAt = DateTime.UtcNow
         };
         _context.ProcessActions.Add(action);
+
+        if (!string.IsNullOrEmpty(dto.RuleExpression) && dto.TargetStepId.HasValue)
+        {
+            var condition = new ProcessActionCondition
+            {
+                Id = Guid.NewGuid(),
+                ProcessActionId = action.Id,
+                RuleExpression = dto.RuleExpression,
+                TargetStepId = dto.TargetStepId,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.ProcessActionConditions.Add(condition);
+        }
+
         await _context.SaveChangesAsync();
         return action.Id;
     }
@@ -178,5 +194,60 @@ public class AdminService : IAdminService
                 Code = p.Code
             })
             .ToListAsync();
+    }
+
+    public async Task<List<TemplateDto>> GetTemplatesAsync()
+    {
+        return await _context.ProcessDocumentTemplates
+            .Select(t => new TemplateDto
+            {
+                Id = t.Id,
+                ProcessId = t.ProcessId,
+                Name = t.Name,
+                Content = t.HtmlTemplateContent
+            })
+            .ToListAsync();
+    }
+
+    public async Task<TemplateDto?> GetTemplateAsync(Guid id)
+    {
+        var t = await _context.ProcessDocumentTemplates.FindAsync(id);
+        if (t == null) return null;
+        return new TemplateDto
+        {
+            Id = t.Id,
+            ProcessId = t.ProcessId,
+            Name = t.Name,
+            Content = t.HtmlTemplateContent
+        };
+    }
+
+    public async Task<Guid> SaveTemplateAsync(TemplateDto dto)
+    {
+        var existing = await _context.ProcessDocumentTemplates.FindAsync(dto.Id);
+        if (existing == null)
+        {
+            // If new, ensure ProcessId is valid (assuming passed)
+            // If ID is empty/new guid, create.
+            var t = new ProcessDocumentTemplate
+            {
+                Id = dto.Id == Guid.Empty ? Guid.NewGuid() : dto.Id,
+                ProcessId = dto.ProcessId,
+                Name = dto.Name,
+                HtmlTemplateContent = dto.Content,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.ProcessDocumentTemplates.Add(t);
+            await _context.SaveChangesAsync();
+            return t.Id;
+        }
+        else
+        {
+            existing.Name = dto.Name;
+            existing.HtmlTemplateContent = dto.Content;
+            existing.ModifiedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return existing.Id;
+        }
     }
 }

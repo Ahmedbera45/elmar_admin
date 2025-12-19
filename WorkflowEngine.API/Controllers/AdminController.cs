@@ -69,4 +69,26 @@ public class AdminController : ControllerBase
         var list = await _adminService.GetAllProcessesAsync();
         return Ok(list);
     }
+
+    [HttpGet("templates")]
+    public async Task<IActionResult> GetTemplates()
+    {
+        var list = await _adminService.GetTemplatesAsync();
+        return Ok(list);
+    }
+
+    [HttpGet("templates/{id}")]
+    public async Task<IActionResult> GetTemplate(Guid id)
+    {
+        var t = await _adminService.GetTemplateAsync(id);
+        if (t == null) return NotFound();
+        return Ok(t);
+    }
+
+    [HttpPost("templates")]
+    public async Task<IActionResult> SaveTemplate([FromBody] TemplateDto dto)
+    {
+        var id = await _adminService.SaveTemplateAsync(dto);
+        return Ok(new { Id = id });
+    }
 }

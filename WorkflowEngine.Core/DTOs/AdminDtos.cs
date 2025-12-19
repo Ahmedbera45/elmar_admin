@@ -24,6 +24,9 @@ public class CreateActionDto
     public required string Name { get; set; }
     public ProcessActionType ActionType { get; set; }
     public Guid? TargetStepId { get; set; }
+    public string? WebhookUrl { get; set; }
+    public string? WebhookMethod { get; set; }
+    public string? RuleExpression { get; set; }
 }
 
 public class CreateFieldDto
@@ -86,4 +89,12 @@ public class WebUserDto
     public string Username { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
+}
+
+public class TemplateDto
+{
+    public Guid Id { get; set; }
+    public Guid ProcessId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
 }

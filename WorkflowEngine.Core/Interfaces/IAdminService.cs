@@ -14,4 +14,7 @@ public interface IAdminService
     Task UpdateStepAsync(UpdateStepDto dto);
     Task<ProcessDefinitionDto?> GetProcessDefinitionAsync(Guid processId);
     Task<List<ProcessDefinitionDto>> GetAllProcessesAsync();
+    Task<List<TemplateDto>> GetTemplatesAsync();
+    Task<TemplateDto?> GetTemplateAsync(Guid id);
+    Task<Guid> SaveTemplateAsync(TemplateDto dto);
 }

@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Net.Http;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,16 +27,18 @@ public class WorkflowService : IWorkflowService
     private readonly RuleEvaluator _ruleEvaluator;
     private readonly INotificationService _notificationService;
     private readonly IMemoryCache _cache;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
-    public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger, INotificationService notificationService, IMemoryCache cache)
+    public WorkflowService(AppDbContext context, ILogger<WorkflowService> logger, INotificationService notificationService, IMemoryCache cache, IHttpClientFactory httpClientFactory)
     {
         _context = context;
         _logger = logger;
         _ruleEvaluator = new RuleEvaluator();
         _notificationService = notificationService;
         _cache = cache;
+        _httpClientFactory = httpClientFactory;
     }
 
     private async Task<Process?> GetCachedProcessAsync(string processCode)
@@ -438,6 +442,44 @@ public class WorkflowService : IWorkflowService
 
                     await _notificationService.SendNotificationAsync(request.InitiatorUserId, $"{subject} - {body}");
                 }
+            }
+
+            // Phase 10: Webhook Integration
+            if (!string.IsNullOrEmpty(action.WebhookUrl))
+            {
+                // Fire and Forget Webhook
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var client = _httpClientFactory.CreateClient();
+                        var payload = new
+                        {
+                            RequestId = request.Id,
+                            RequestNumber = request.RequestNumber,
+                            Action = action.Name,
+                            UserId = dto.UserId,
+                            Data = dto.FormValues,
+                            Timestamp = DateTime.UtcNow
+                        };
+
+                        var json = JsonSerializer.Serialize(payload);
+                        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                        if (string.Equals(action.WebhookMethod, "POST", StringComparison.OrdinalIgnoreCase))
+                        {
+                            await client.PostAsync(action.WebhookUrl, content);
+                        }
+                        else
+                        {
+                            await client.GetAsync(action.WebhookUrl);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to execute webhook for Action {ActionId}", action.Id);
+                    }
+                });
             }
 
             // Phase 6: Real-time update

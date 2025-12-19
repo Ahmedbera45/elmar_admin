@@ -110,6 +110,7 @@ export default function ProcessDesignerPage({ params }: { params: { id: string }
         onClose={() => setIsActionModalOpen(false)}
         stepId={selectedStep?.id}
         steps={process?.steps || []}
+        allFields={process?.steps.flatMap((s: any) => s.fields) || []}
         onSuccess={refetch}
       />
       <StepSettingsModal
