@@ -20,11 +20,22 @@ export const postUploadFile = async (file: File) => {
     return res.data;
 }
 
-export const useGetProcessRequests = (code: string) => {
+export type ProcessRequestFilter = {
+  status?: number;
+  startDate?: string;
+  endDate?: string;
+};
+
+export const useGetProcessRequests = (code: string, filter?: ProcessRequestFilter) => {
   return useQuery({
-    queryKey: ['process-requests', code],
+    queryKey: ['process-requests', code, filter],
     queryFn: async () => {
-      const res = await AXIOS_INSTANCE.get(`/api/workflow/process/${code}/requests`);
+      const params = new URLSearchParams();
+      if (filter?.status !== undefined) params.append('status', filter.status.toString());
+      if (filter?.startDate) params.append('startDate', filter.startDate);
+      if (filter?.endDate) params.append('endDate', filter.endDate);
+
+      const res = await AXIOS_INSTANCE.get(`/api/workflow/process/${code}/requests`, { params });
       return res.data;
     }
   });

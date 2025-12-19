@@ -472,9 +472,9 @@ public class WorkflowService : IWorkflowService
         };
     }
 
-    public async Task<List<ProcessRequestListDto>> GetProcessRequestsAsync(string processCode)
+    public async Task<List<ProcessRequestListDto>> GetProcessRequestsAsync(ProcessRequestFilterDto filter)
     {
-        var process = await _context.Processes.FirstOrDefaultAsync(p => p.Code == processCode);
+        var process = await _context.Processes.FirstOrDefaultAsync(p => p.Code == filter.ProcessCode);
         if (process == null) return new List<ProcessRequestListDto>();
 
         var listView = await _context.ProcessListViews.FirstOrDefaultAsync(lv => lv.ProcessId == process.Id);
@@ -482,9 +482,27 @@ public class WorkflowService : IWorkflowService
             ? await _context.ProcessListViewColumns.Where(c => c.ListViewId == listView.Id).ToListAsync()
             : new List<ProcessListViewColumn>();
 
-        var requests = await _context.ProcessRequests
+        var query = _context.ProcessRequests
             .Where(r => r.ProcessId == process.Id)
-            .ToListAsync();
+            .AsQueryable();
+
+        if (filter.Status.HasValue)
+        {
+            query = query.Where(r => r.Status == filter.Status.Value);
+        }
+
+        if (filter.StartDate.HasValue)
+        {
+            query = query.Where(r => r.CreatedAt >= filter.StartDate.Value);
+        }
+
+        if (filter.EndDate.HasValue)
+        {
+            var end = filter.EndDate.Value.Date.AddDays(1).AddTicks(-1);
+            query = query.Where(r => r.CreatedAt <= end);
+        }
+
+        var requests = await query.ToListAsync();
 
         var result = new List<ProcessRequestListDto>();
 
