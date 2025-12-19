@@ -20,11 +20,17 @@ public class NotificationService : INotificationService
 
     public async Task SendNotificationAsync(Guid userId, string message)
     {
-        // 1. Send via SignalR
-        // Assuming userId is used as the UserIdentifier in SignalR (mapped from Claims)
         await _hubContext.Clients.User(userId.ToString()).SendAsync("ReceiveNotification", message);
+        _logger.LogInformation("Sent notification to User {UserId}: {Message}", userId, message);
+    }
 
-        // 2. Simulate Email (Log)
-        _logger.LogInformation("Simulating Email to User {UserId}: {Message}", userId, message);
+    public async Task SendUpdateAsync(Guid userId)
+    {
+        await _hubContext.Clients.User(userId.ToString()).SendAsync("ReceiveUpdate");
+    }
+
+    public async Task SendUpdateToAllAsync()
+    {
+        await _hubContext.Clients.All.SendAsync("ReceiveUpdate");
     }
 }
