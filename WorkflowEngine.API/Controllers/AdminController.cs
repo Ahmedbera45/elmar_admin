@@ -34,6 +34,13 @@ public class AdminController : ControllerBase
         return Ok(new { Id = id });
     }
 
+    [HttpPut("step")]
+    public async Task<IActionResult> UpdateStep([FromBody] UpdateStepDto dto)
+    {
+        await _adminService.UpdateStepAsync(dto);
+        return Ok();
+    }
+
     [HttpPost("action")]
     public async Task<IActionResult> AddAction([FromBody] CreateActionDto dto)
     {

@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast-context';
 import { ProcessFieldModal } from '@/components/admin/process-field-modal';
 import { ProcessActionModal } from '@/components/admin/process-action-modal';
+import { StepSettingsModal } from '@/components/admin/step-settings-modal';
+import { Settings } from 'lucide-react';
 
 export default function ProcessDesignerPage({ params }: { params: { id: string } }) {
   const { data: process, isLoading, refetch } = useGetProcessDefinition(params.id);
@@ -16,6 +18,7 @@ export default function ProcessDesignerPage({ params }: { params: { id: string }
   const [isStepModalOpen, setIsStepModalOpen] = useState(false);
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [newStepName, setNewStepName] = useState('');
   const { toast } = useToast();
 
@@ -40,11 +43,22 @@ export default function ProcessDesignerPage({ params }: { params: { id: string }
         {process?.steps.map((step: any) => (
           <Card
             key={step.id}
-            className={`cursor-pointer ${selectedStep?.id === step.id ? 'border-blue-500' : ''}`}
+            className={`cursor-pointer relative ${selectedStep?.id === step.id ? 'border-blue-500' : ''}`}
             onClick={() => setSelectedStep(step)}
           >
-            <CardHeader className="p-4">
+            <CardHeader className="p-4 flex flex-row justify-between items-center">
               <CardTitle className="text-lg">{step.name}</CardTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedStep(step);
+                  setIsSettingsModalOpen(true);
+                }}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
             </CardHeader>
           </Card>
         ))}
@@ -96,6 +110,12 @@ export default function ProcessDesignerPage({ params }: { params: { id: string }
         onClose={() => setIsActionModalOpen(false)}
         stepId={selectedStep?.id}
         steps={process?.steps || []}
+        onSuccess={refetch}
+      />
+      <StepSettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        step={selectedStep}
         onSuccess={refetch}
       />
     </div>

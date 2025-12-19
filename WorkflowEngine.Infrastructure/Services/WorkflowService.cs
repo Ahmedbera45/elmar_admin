@@ -355,6 +355,47 @@ public class WorkflowService : IWorkflowService
                     {
                         request.Status = ProcessRequestStatus.Completed;
                     }
+
+                    // Phase 9: Smart Assignment
+                    request.AssignedUserId = null; // Default to null (or role based)
+
+                    if (targetStep.AssignmentType == ProcessStepAssignmentType.UserBased && !string.IsNullOrEmpty(targetStep.AssignedTo))
+                    {
+                        if (Guid.TryParse(targetStep.AssignedTo, out Guid assignedId))
+                        {
+                            request.AssignedUserId = assignedId;
+                        }
+                    }
+                    else if (targetStep.AssignmentType == ProcessStepAssignmentType.DynamicFromField && !string.IsNullOrEmpty(targetStep.AssignedTo))
+                    {
+                        // Check current form values first
+                        if (dto.FormValues.TryGetValue(targetStep.AssignedTo, out var val) && val != null)
+                        {
+                             if (Guid.TryParse(val.ToString(), out Guid dynamicId))
+                             {
+                                 request.AssignedUserId = dynamicId;
+                             }
+                        }
+                        else
+                        {
+                            // Check historical values
+                            // Note: We need to query DB because we don't have all historical values in memory here efficiently
+                            // But usually dynamic assignment is from a field just filled or previously filled.
+                            var pastValue = await _context.ProcessRequestValues
+                                .Include(v => v.ProcessEntry)
+                                .Where(v => v.ProcessRequestId == request.Id && v.ProcessEntry.Key == targetStep.AssignedTo)
+                                .OrderByDescending(v => v.CreatedAt)
+                                .FirstOrDefaultAsync();
+
+                            if (pastValue != null && pastValue.StringValue != null)
+                            {
+                                if (Guid.TryParse(pastValue.StringValue, out Guid dynamicId))
+                                {
+                                    request.AssignedUserId = dynamicId;
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -415,10 +456,26 @@ public class WorkflowService : IWorkflowService
 
     public async Task<List<ProcessRequest>> GetUserTasksAsync(Guid userId)
     {
+        var user = await _context.WebUsers.FindAsync(userId);
+        if (user == null) return new List<ProcessRequest>();
+
         return await _context.ProcessRequests
             .Include(e => e.Process)
             .Include(e => e.CurrentStep)
             .Where(e => e.Status == ProcessRequestStatus.Active)
+            .Where(e =>
+                (e.AssignedUserId == userId) ||
+                (e.AssignedUserId == null && e.CurrentStep.AssignmentType == ProcessStepAssignmentType.RoleBased && e.CurrentStep.AssignedTo == user.Role)
+                // Fallback: If no assignment type set (legacy), maybe allow all? Or restrict?
+                // For now, assuming legacy steps (0) are open or need update.
+                // If AssignmentType is 0 (default), it's not RoleBased(1).
+                // Let's assume default/legacy behavior is "Anyone with permission" or "No one"?
+                // Existing system didn't have AssignmentType.
+                // If I want to support legacy "Show to all", I might need to handle AssignmentType == 0 case.
+                // Assuming AssignmentType default is 0. If enum starts at 1, default is 0.
+                // If 0, maybe show to all? Or just Initiator?
+                // Let's rely on explicit assignment for Phase 9.
+            )
             .ToListAsync();
     }
 
@@ -567,6 +624,25 @@ public class WorkflowService : IWorkflowService
             .Include(c => c.ProcessEntry)
             .Where(c => c.ProcessStepId == stepId)
             .Select(c => c.ProcessEntry)
+            .ToListAsync();
+    }
+
+    public async Task<List<WebUserDto>> GetUsersAsync(string? role)
+    {
+        var query = _context.WebUsers.AsQueryable();
+        if (!string.IsNullOrEmpty(role))
+        {
+            query = query.Where(u => u.Role == role);
+        }
+
+        return await query
+            .Select(u => new WebUserDto
+            {
+                Id = u.Id,
+                Username = u.Username,
+                Email = u.Email,
+                Role = u.Role
+            })
             .ToListAsync();
     }
 

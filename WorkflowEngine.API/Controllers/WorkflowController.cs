@@ -214,4 +214,17 @@ public class WorkflowController : ControllerBase
         if (detail == null) return NotFound();
         return Ok(detail);
     }
+
+    [HttpGet("users")]
+    public async Task<IActionResult> GetUsers([FromQuery] string? role = null)
+    {
+        // Simple user search for dropdowns
+        // In real app, this should be paginated or optimized
+        var query = _workflowService.GetUsersQueryable(); // Need to expose this or use logic here
+        // Direct DB access (bad practice but quick for this task) or use service
+        // Since I cannot change Service Interface easily without updating implementation, I'll do it here if possible or update Service.
+        // Actually, I should update Service.
+        var users = await _workflowService.GetUsersAsync(role);
+        return Ok(users);
+    }
 }

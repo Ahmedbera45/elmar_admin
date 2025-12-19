@@ -80,6 +80,7 @@ public class AdminService : IAdminService
             EntryType = dto.EntryType,
             IsRequired = dto.IsRequired,
             Options = dto.Options,
+            LookupSource = dto.LookupSource,
             CreatedAt = DateTime.UtcNow
         };
         _context.ProcessEntries.Add(entry);
@@ -97,6 +98,18 @@ public class AdminService : IAdminService
 
         await _context.SaveChangesAsync();
         return entry.Id;
+    }
+
+    public async Task UpdateStepAsync(UpdateStepDto dto)
+    {
+        var step = await _context.ProcessSteps.FindAsync(dto.StepId);
+        if (step != null)
+        {
+            step.AssignmentType = dto.AssignmentType;
+            step.AssignedTo = dto.AssignedTo;
+            step.ModifiedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
     }
 
     public async Task<ProcessDefinitionDto?> GetProcessDefinitionAsync(Guid processId)
@@ -128,6 +141,8 @@ public class AdminService : IAdminService
                 Id = step.Id,
                 Name = step.Name,
                 StepType = step.StepType,
+                AssignmentType = step.AssignmentType,
+                AssignedTo = step.AssignedTo,
                 Actions = step.Actions.Select(a => new ActionDefinitionDto
                 {
                     Id = a.Id,

@@ -13,6 +13,9 @@ public class ProcessStep : BaseEntity
     public int OrderIndex { get; set; }
     public int? DurationMinutes { get; set; }
 
+    public ProcessStepAssignmentType AssignmentType { get; set; }
+    public string? AssignedTo { get; set; }
+
     // Navigation Properties
     public Process Process { get; set; } = null!;
     public ICollection<ProcessAction> Actions { get; set; } = new List<ProcessAction>();

@@ -11,6 +11,68 @@ export const useGetProcessViewDefinition = (code: string) => {
   });
 };
 
+export const useGetRoles = () => {
+    return useQuery({
+        queryKey: ['admin-roles'],
+        queryFn: async () => {
+            const res = await AXIOS_INSTANCE.get('/api/admin/roles');
+            return res.data;
+        }
+    });
+};
+
+export const useGetUsers = (role?: string) => {
+    return useQuery({
+        queryKey: ['users', role],
+        queryFn: async () => {
+            const params = new URLSearchParams();
+            if (role) params.append('role', role);
+            const res = await AXIOS_INSTANCE.get('/api/workflow/users', { params });
+            return res.data;
+        }
+    });
+};
+
+export const postCreateRole = async (role: any) => {
+    const res = await AXIOS_INSTANCE.post('/api/admin/roles', role);
+    return res.data;
+};
+
+export const deleteRole = async (id: string) => {
+    const res = await AXIOS_INSTANCE.delete(`/api/admin/roles/${id}`);
+    return res.data;
+};
+
+export const useGetSettings = () => {
+    return useQuery({
+        queryKey: ['admin-settings'],
+        queryFn: async () => {
+            const res = await AXIOS_INSTANCE.get('/api/admin/settings');
+            return res.data;
+        }
+    });
+};
+
+export const postUpdateSetting = async (setting: any) => {
+    const res = await AXIOS_INSTANCE.post('/api/admin/settings', setting);
+    return res.data;
+};
+
+export const useGetNotificationTemplates = () => {
+    return useQuery({
+        queryKey: ['admin-notifications'],
+        queryFn: async () => {
+            const res = await AXIOS_INSTANCE.get('/api/admin/notifications/templates');
+            return res.data;
+        }
+    });
+};
+
+export const postSaveNotificationTemplate = async (template: any) => {
+    const res = await AXIOS_INSTANCE.post('/api/admin/notifications/templates', template);
+    return res.data;
+};
+
 export const postUploadFile = async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -99,6 +161,11 @@ export const postCreateProcess = async (data: any) => {
 
 export const postAddStep = async (data: any) => {
     const res = await AXIOS_INSTANCE.post('/api/admin/step', data);
+    return res.data;
+}
+
+export const putUpdateStep = async (data: any) => {
+    const res = await AXIOS_INSTANCE.put('/api/admin/step', data);
     return res.data;
 }
 

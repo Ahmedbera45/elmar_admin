@@ -13,4 +13,5 @@ public class ProcessEntry : BaseEntity
     public bool IsRequired { get; set; }
     public string? ValidationRegex { get; set; }
     public string? CalculationFormula { get; set; }
+    public string? LookupSource { get; set; }
 }
