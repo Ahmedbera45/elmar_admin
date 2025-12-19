@@ -1,5 +1,5 @@
 using System;
-
+using WorkflowEngine.Core.Common;
 namespace WorkflowEngine.Core.Entities;
 
 public class ProcessDocumentTemplate : BaseEntity
