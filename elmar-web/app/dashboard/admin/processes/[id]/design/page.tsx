@@ -7,11 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast-context';
+import { ProcessFieldModal } from '@/components/admin/process-field-modal';
+import { ProcessActionModal } from '@/components/admin/process-action-modal';
 
 export default function ProcessDesignerPage({ params }: { params: { id: string } }) {
   const { data: process, isLoading, refetch } = useGetProcessDefinition(params.id);
   const [selectedStep, setSelectedStep] = useState<any>(null);
   const [isStepModalOpen, setIsStepModalOpen] = useState(false);
+  const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [newStepName, setNewStepName] = useState('');
   const { toast } = useToast();
 
@@ -55,7 +59,7 @@ export default function ProcessDesignerPage({ params }: { params: { id: string }
                 <ul className="list-disc pl-5 mb-4">
                   {selectedStep.fields.map((f: any) => <li key={f.id}>{f.title} ({f.entryType})</li>)}
                 </ul>
-                <Button>Add Field</Button>
+                <Button onClick={() => setIsFieldModalOpen(true)}>Add Field</Button>
               </CardContent>
             </Card>
             <Card>
@@ -64,7 +68,7 @@ export default function ProcessDesignerPage({ params }: { params: { id: string }
                 <ul className="list-disc pl-5 mb-4">
                   {selectedStep.actions.map((a: any) => <li key={a.id}>{a.name} ({a.actionType})</li>)}
                 </ul>
-                <Button>Add Action</Button>
+                <Button onClick={() => setIsActionModalOpen(true)}>Add Action</Button>
               </CardContent>
             </Card>
           </>
@@ -80,6 +84,20 @@ export default function ProcessDesignerPage({ params }: { params: { id: string }
             <Button onClick={handleAddStep} className="w-full">Add</Button>
         </div>
       </Dialog>
+
+      <ProcessFieldModal
+        isOpen={isFieldModalOpen}
+        onClose={() => setIsFieldModalOpen(false)}
+        stepId={selectedStep?.id}
+        onSuccess={refetch}
+      />
+      <ProcessActionModal
+        isOpen={isActionModalOpen}
+        onClose={() => setIsActionModalOpen(false)}
+        stepId={selectedStep?.id}
+        steps={process?.steps || []}
+        onSuccess={refetch}
+      />
     </div>
   );
 }
