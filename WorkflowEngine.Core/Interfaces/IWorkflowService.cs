@@ -16,4 +16,5 @@ public interface IWorkflowService
     Task<List<ProcessRequestListDto>> GetProcessRequestsAsync(string processCode);
     Task<ProcessRequest?> GetRequestAsync(Guid requestId);
     Task<List<ProcessEntry>> GetStepFormFieldsAsync(Guid stepId);
+    Task<RequestDetailDto?> GetRequestDetailAsync(Guid requestId);
 }
