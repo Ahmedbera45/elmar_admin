@@ -91,3 +91,23 @@ export const postAddField = async (data: any) => {
     const res = await AXIOS_INSTANCE.post('/api/admin/field', data);
     return res.data;
 }
+
+export const useGetDashboardStats = () => {
+  return useQuery({
+    queryKey: ['dashboard-stats'],
+    queryFn: async () => {
+      const res = await AXIOS_INSTANCE.get('/api/dashboard/stats');
+      return res.data;
+    }
+  });
+};
+
+export const useGetChartData = () => {
+  return useQuery({
+    queryKey: ['dashboard-chart'],
+    queryFn: async () => {
+      const res = await AXIOS_INSTANCE.get('/api/dashboard/chart-data');
+      return res.data;
+    }
+  });
+};

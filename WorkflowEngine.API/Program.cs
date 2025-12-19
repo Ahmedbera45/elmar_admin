@@ -103,6 +103,7 @@ builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 // WORKFLOW ENGINE SERVİSLERİ (FAZ 3)
 builder.Services.AddScoped<IWorkflowService, WorkflowService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
 
 // ENTEGRASYON SERVİSLERİ (FAZ 6.5)
 builder.Services.AddScoped<IStorageService, LocalDiskStorageService>();
