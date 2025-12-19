@@ -11,4 +11,8 @@ public class WebUser : BaseEntity
     public required string Role { get; set; } = "User"; // Default role
     public string? Permissions { get; set; } // Phase 6.5 Part 2
     public bool IsActive { get; set; } = true;
+
+    public Guid? DelegateUserId { get; set; }
+    public DateTime? DelegateUntil { get; set; }
+    public string? NotificationPreferences { get; set; }
 }

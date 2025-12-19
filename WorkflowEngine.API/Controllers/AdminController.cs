@@ -14,10 +14,81 @@ namespace WorkflowEngine.API.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly IAdminService _adminService;
+    private readonly Infrastructure.Services.ProcessImportExportService _importExportService;
+    private readonly Infrastructure.Services.ProcessVersioningService _versioningService;
+    private readonly Infrastructure.Data.AppDbContext _context; // For Versions list query (quick fix)
 
-    public AdminController(IAdminService adminService)
+    public AdminController(
+        IAdminService adminService,
+        Infrastructure.Services.ProcessImportExportService importExportService,
+        Infrastructure.Services.ProcessVersioningService versioningService,
+        Infrastructure.Data.AppDbContext context)
     {
         _adminService = adminService;
+        _importExportService = importExportService;
+        _versioningService = versioningService;
+        _context = context;
+    }
+
+    [HttpGet("process/{id}/export")]
+    public async Task<IActionResult> ExportProcess(Guid id)
+    {
+        var json = await _importExportService.ExportProcessAsync(id);
+        return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", $"process-{id}.json");
+    }
+
+    [HttpPost("process/import")]
+    public async Task<IActionResult> ImportProcess(Microsoft.AspNetCore.Http.IFormFile file)
+    {
+        if (file == null || file.Length == 0) return BadRequest("No file");
+
+        using var stream = new System.IO.StreamReader(file.OpenReadStream());
+        var json = await stream.ReadToEndAsync();
+
+        try {
+            await _importExportService.ImportProcessAsync(json);
+            return Ok("Import successful");
+        } catch (Exception ex) {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("process/{id}/new-version")]
+    public async Task<IActionResult> NewVersion(Guid id)
+    {
+        var newId = await _versioningService.CreateNewVersionAsync(id);
+        return Ok(new { Id = newId });
+    }
+
+    [HttpGet("process/{code}/versions")]
+    public async Task<IActionResult> GetVersions(string code)
+    {
+        // Should move to Service but for speed:
+        var versions = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+            System.Linq.Queryable.Select(
+                System.Linq.Queryable.OrderByDescending(
+                    System.Linq.Queryable.Where(_context.Processes, p => p.Code == code),
+                    p => p.Version
+                ),
+                p => new { p.Id, p.Version, p.IsActive, p.CreatedAt }
+            )
+        );
+        return Ok(versions);
+    }
+
+    [HttpPost("process/{id}/restore")]
+    public async Task<IActionResult> RestoreVersion(Guid id)
+    {
+        var process = await _context.Processes.FindAsync(id);
+        if (process == null) return NotFound();
+
+        // Deactivate all others with same code
+        var others = await System.Linq.Queryable.Where(_context.Processes, p => p.Code == process.Code).ToListAsync();
+        foreach(var p in others) p.IsActive = false;
+
+        process.IsActive = true;
+        await _context.SaveChangesAsync();
+        return Ok();
     }
 
     [HttpPost("process")]

@@ -16,6 +16,9 @@ public class ProcessStep : BaseEntity
     public ProcessStepAssignmentType AssignmentType { get; set; }
     public string? AssignedTo { get; set; }
 
+    public int? TimeoutHours { get; set; }
+    public Guid? TimeoutActionId { get; set; }
+
     // Navigation Properties
     public Process Process { get; set; } = null!;
     public ICollection<ProcessAction> Actions { get; set; } = new List<ProcessAction>();

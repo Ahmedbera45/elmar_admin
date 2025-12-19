@@ -666,7 +666,8 @@ public class WorkflowService : IWorkflowService
                 Id = req.Id,
                 Status = req.Status,
                 CreatedAt = req.CreatedAt,
-                InitiatorUserId = req.InitiatorUserId
+                InitiatorUserId = req.InitiatorUserId,
+                CurrentStepId = req.CurrentStepId // Needed for Kanban
             };
 
             foreach (var col in columns)

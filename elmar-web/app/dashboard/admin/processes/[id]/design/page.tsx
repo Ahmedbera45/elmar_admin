@@ -12,6 +12,9 @@ import { ProcessActionModal } from '@/components/admin/process-action-modal';
 import { StepSettingsModal } from '@/components/admin/step-settings-modal';
 import { Settings } from 'lucide-react';
 
+import { postProcessRestoreVersion } from '@/lib/api/generated';
+import { customInstance } from '@/lib/api/custom-instance';
+
 export default function ProcessDesignerPage({ params }: { params: { id: string } }) {
   const { data: process, isLoading, refetch } = useGetProcessDefinition(params.id);
   const [selectedStep, setSelectedStep] = useState<any>(null);
@@ -19,8 +22,41 @@ export default function ProcessDesignerPage({ params }: { params: { id: string }
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isVersionsOpen, setIsVersionsOpen] = useState(false);
+  const [versions, setVersions] = useState<any[]>([]);
   const [newStepName, setNewStepName] = useState('');
   const { toast } = useToast();
+
+  const loadVersions = async () => {
+      if (!process?.code) return;
+      const res = await customInstance<any[]>({
+          url: `/api/admin/process/${process.code}/versions`,
+          method: 'GET'
+      });
+      setVersions(res);
+      setIsVersionsOpen(true);
+  };
+
+  const handleRestore = async (vId: string) => {
+      if(!confirm("Restore this version? Unsaved changes in current version will be inactive.")) return;
+      try {
+          await customInstance({
+              url: `/api/admin/process/${vId}/restore`,
+              method: 'POST'
+          });
+          toast("Version restored. Refreshing...");
+          window.location.reload(); // Hard reload to pick up new version ID if we were on ID page
+          // Or redirect to new ID if the page depends on ID.
+          // The page depends on params.id. If we restored another ID, we should redirect there.
+          // But usually we edit by "Latest Active" or specific ID.
+          // If params.id is specific, we are viewing that one.
+          // Restoring makes it active.
+      } catch (e) { toast("Failed to restore", "error"); }
+  };
+
+  const handleExport = async () => {
+      window.open(`/api/admin/process/${params.id}/export`, '_blank');
+  };
 
   const handleAddStep = async () => {
     try {
