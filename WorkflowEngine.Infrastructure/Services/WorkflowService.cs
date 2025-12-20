@@ -501,8 +501,8 @@ public class WorkflowService : IWorkflowService
 
                 foreach (var note in notifications)
                 {
-                    var subject = TemplateHelper.ReplacePlaceholders(note.Subject, notificationData);
-                    var body = TemplateHelper.ReplacePlaceholders(note.Body, notificationData);
+                    var subject = TemplateHelper.ReplacePlaceholders(note.SubjectTemplate, notificationData);
+                    var body = TemplateHelper.ReplacePlaceholders(note.BodyTemplate, notificationData);
 
                     await _notificationService.SendNotificationAsync(request.InitiatorUserId, $"{subject} - {body}");
                 }

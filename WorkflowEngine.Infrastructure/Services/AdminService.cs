@@ -126,7 +126,7 @@ public class AdminService : IAdminService
         var step = await _context.ProcessSteps.FindAsync(dto.StepId);
         if (step != null)
         {
-            step.AssignmentType = dto.AssignmentType;
+            step.AssignmentType = (WorkflowEngine.Core.Enums.ProcessStepAssignmentType)dto.AssignmentType;
             step.AssignedTo = dto.AssignedTo;
             step.ModifiedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
