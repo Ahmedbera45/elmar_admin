@@ -25,8 +25,6 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .WriteTo.Console()
     .WriteTo.File("Logs/workflow-log-.txt", rollingInterval: RollingInterval.Day));
 
-using WorkflowEngine.Infrastructure.Services;
-
 // --- 1. SERVİS KAYITLARI ---
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
