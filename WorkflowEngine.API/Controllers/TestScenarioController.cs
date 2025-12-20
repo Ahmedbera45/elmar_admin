@@ -99,7 +99,7 @@ public class TestScenarioController : ControllerBase
             await _context.SaveChangesAsync();
 
             // Adım 2: WorkflowService.StartProcess ile bu süreci başlat.
-            var requestId = await _workflowService.StartProcessAsync(process.Code, user.Id);
+            var requestId = await _workflowService.StartProcessAsync(process.Code, user.Id, new System.Collections.Generic.Dictionary<string, object>());
 
             // Adım 3: WorkflowService.ExecuteAction ile "Başvuru" adımından "Onay" adımına geçiş yap.
             var executeDto = new ExecuteActionDto
@@ -123,6 +123,8 @@ public class TestScenarioController : ControllerBase
                 throw new Exception("History not created!");
             }
 
+            var historyIds = history.Select(h => h.Id).ToList();
+
             // Return success with details
             return Ok(new
             {
@@ -134,7 +136,7 @@ public class TestScenarioController : ControllerBase
                     ProcessCode = process.Code,
                     RequestId = requestId,
                     HistoryCount = history.Count,
-                    HistoryIds = history.Select(h => h.Id).ToList()
+                    HistoryIds = historyIds
                 }
             });
         }
