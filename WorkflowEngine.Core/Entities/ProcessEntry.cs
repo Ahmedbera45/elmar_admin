@@ -14,4 +14,7 @@ public class ProcessEntry : BaseEntity
     public string? ValidationRegex { get; set; }
     public string? CalculationFormula { get; set; }
     public string? LookupSource { get; set; }
+    public decimal? MinValue { get; set; }
+    public decimal? MaxValue { get; set; }
+    public string? ErrorMessage { get; set; }
 }

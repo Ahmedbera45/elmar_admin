@@ -8,4 +8,5 @@ public class NotificationTemplate : BaseEntity
     public required string Subject { get; set; }
     public required string Body { get; set; }
     public string? Description { get; set; }
+    public Guid? ProcessActionId { get; set; }
 }

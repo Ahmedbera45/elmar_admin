@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using WorkflowEngine.Core.DTOs;
 using WorkflowEngine.Core.Interfaces;
 
@@ -64,15 +65,11 @@ public class AdminController : ControllerBase
     public async Task<IActionResult> GetVersions(string code)
     {
         // Should move to Service but for speed:
-        var versions = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
-            System.Linq.Queryable.Select(
-                System.Linq.Queryable.OrderByDescending(
-                    System.Linq.Queryable.Where(_context.Processes, p => p.Code == code),
-                    p => p.Version
-                ),
-                p => new { p.Id, p.Version, p.IsActive, p.CreatedAt }
-            )
-        );
+        var versions = await _context.Processes
+            .Where(p => p.Code == code)
+            .OrderByDescending(p => p.Version)
+            .Select(p => new { p.Id, p.Version, p.IsActive, p.CreatedAt })
+            .ToListAsync();
         return Ok(versions);
     }
 
@@ -83,7 +80,10 @@ public class AdminController : ControllerBase
         if (process == null) return NotFound();
 
         // Deactivate all others with same code
-        var others = await System.Linq.Queryable.Where(_context.Processes, p => p.Code == process.Code).ToListAsync();
+        var others = await _context.Processes
+            .Where(p => p.Code == process.Code)
+            .ToListAsync();
+
         foreach(var p in others) p.IsActive = false;
 
         process.IsActive = true;

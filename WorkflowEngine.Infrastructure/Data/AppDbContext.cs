@@ -46,6 +46,9 @@ public class AppDbContext : DbContext
     public DbSet<AppRole> AppRoles { get; set; }
     public DbSet<SystemSetting> SystemSettings { get; set; }
 
+    public DbSet<ExternalConnection> ExternalConnections { get; set; }
+    public DbSet<ExternalDataset> ExternalDatasets { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
