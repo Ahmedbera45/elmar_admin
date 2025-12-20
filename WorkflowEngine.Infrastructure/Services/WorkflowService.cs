@@ -107,7 +107,7 @@ public class WorkflowService : IWorkflowService
         }) ?? new List<PePsConnection>();
     }
 
-    public async Task<Guid> StartProcessAsync(string processCode, Guid userId)
+    public async Task<Guid> StartProcessAsync(string processCode, Guid userId, Dictionary<string, object> formData)
     {
         _logger.LogInformation("Starting process {ProcessCode} for user {UserId}", processCode, userId);
 

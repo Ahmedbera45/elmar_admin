@@ -37,7 +37,7 @@ public class WorkflowController : ControllerBase
 
         try
         {
-            var requestId = await _workflowService.StartProcessAsync(processCode, userId);
+            var requestId = await _workflowService.StartProcessAsync(processCode, userId, new Dictionary<string, object>());
             return Ok(new { RequestId = requestId });
         }
         catch (Exception ex)

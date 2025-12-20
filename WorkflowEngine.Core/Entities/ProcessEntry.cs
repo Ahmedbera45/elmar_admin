@@ -12,9 +12,12 @@ public class ProcessEntry : BaseEntity
     public string? Options { get; set; } // JSON: [{"label":"A","value":"1"}]
     public bool IsRequired { get; set; }
     public string? ValidationRegex { get; set; }
-    public string? CalculationFormula { get; set; }
-    public string? LookupSource { get; set; }
     public decimal? MinValue { get; set; }
     public decimal? MaxValue { get; set; }
     public string? ErrorMessage { get; set; }
+    public string? CalculationFormula { get; set; }
+    public string? LookupSource { get; set; }
+
+    public Guid? ExternalDatasetId { get; set; }
+    public ExternalDataset? ExternalDataset { get; set; }
 }
