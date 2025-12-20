@@ -5,6 +5,7 @@ using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using WorkflowEngine.Core.DTOs;
+using WorkflowEngine.Core.Entities;
 using WorkflowEngine.Core.Enums;
 using WorkflowEngine.Core.Interfaces;
 using WorkflowEngine.Infrastructure.Data;

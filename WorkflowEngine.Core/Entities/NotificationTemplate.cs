@@ -9,4 +9,5 @@ public class NotificationTemplate : BaseEntity
     public required string SubjectTemplate { get; set; }
     public required string BodyTemplate { get; set; }
     public string? Description { get; set; }
+    public Guid? ProcessActionId { get; set; }
 }
