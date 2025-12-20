@@ -51,4 +51,10 @@ CodeCoverage/
 # NUnit
 *.VisualState.xml
 TestResult.xml
-nunit-*.xml
+
+elmar-web/node_modules/
+elmar-web/.next/
+
+elmar-web/.next/
+
+elmar-web/.next/
